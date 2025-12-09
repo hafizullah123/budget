@@ -1,0 +1,6 @@
+{
+  "purpose": "Test insert",
+  "category_id": 1,
+  "amount": 123.45,
+  "description": "Inserted by test"
+}

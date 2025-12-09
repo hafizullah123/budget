@@ -25,9 +25,11 @@ try {
     $missing_tables = [];
     
     foreach ($tables as $table) {
-        $stmt = $conn->prepare("SHOW TABLES LIKE :table");
-        $stmt->execute([':table' => $table]);
-        if ($stmt->rowCount() == 0) {
+        // Some MySQL/MariaDB versions don't accept bound parameters for SHOW TABLES
+        // Use a quoted literal instead to avoid syntax errors
+        $quoted = $conn->quote($table);
+        $stmt = $conn->query("SHOW TABLES LIKE $quoted");
+        if ($stmt === false || $stmt->rowCount() == 0) {
             $missing_tables[] = $table;
         }
     }

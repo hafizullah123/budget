@@ -124,6 +124,95 @@ if (!$conn) {
             padding: 25px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         }
+
+        /* Make the preview section scrollable while keeping the load-more button visible */
+        .preview-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* configuration: show exactly 3 items before scrolling */
+        :root {
+            --preview-gap: 15px;
+            --item-height: 260px; /* increased so details are more visible */
+            --visible-count: 3;
+        }
+
+        /* Each budget item gets a fixed height so container can show exactly 3 */
+        .budget-item {
+            height: var(--item-height);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 14px 16px;
+            border: 1px solid #eef2f7;
+            border-radius: 8px;
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        }
+
+        .budget-item .item-section {
+            padding: 6px 0;
+        }
+
+        .budget-item .item-section.header h3 {
+            margin: 0;
+            font-size: 1.15rem;
+            color: #0d47a1;
+        }
+
+        .budget-item .item-section.body {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .budget-item .budget-desc {
+            color: #444;
+            font-size: 0.95rem;
+            line-height: 1.3;
+            overflow: hidden;
+        }
+
+        .budget-item .item-section.footer {
+            font-size: 0.85rem;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .budget-item .category-badge {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 18px;
+            font-size: 0.85rem;
+            color: #fff;
+        }
+
+        #previewContainer {
+            overflow-y: auto;
+            /* compute max-height = item-height * visible-count + gap*(visible-count - 1) */
+            max-height: calc(var(--item-height) * var(--visible-count) + var(--preview-gap) * (var(--visible-count) - 1));
+            padding-right: 8px;
+        }
+
+        /* Custom scrollbar for WebKit browsers */
+        #previewContainer::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        #previewContainer::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 6px;
+        }
+
+        #previewContainer::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 6px;
+        }
         
         .section-title {
             font-size: 1.5rem;
@@ -397,6 +486,11 @@ if (!$conn) {
             header h1 {
                 font-size: 2rem;
             }
+            /* on small screens, reduce visible preview height to 2 items */
+            :root {
+                --item-height: 150px;
+                --visible-count: 2;
+            }
         }
     </style>
 </head>
@@ -424,9 +518,9 @@ if (!$conn) {
                 
                 <form id="budgetForm">
                     <div class="form-group">
-                        <label for="purpose"><i class="fas fa-bullseye"></i> مقصد بودجه *</label>
-                        <input type="text" id="purpose" name="purpose" placeholder="مقصد بودجه را وارد کنید" required>
-                        <div class="validation-error" id="purposeError">لطفاً مقصد بودجه را وارد کنید</div>
+                        <label for="purpose"><i class="fas fa-hashtag"></i> کد بودجه *</label>
+                        <input type="number" step="1" inputmode="numeric" min="0" id="purpose" name="purpose" placeholder="کد عددی بودجه را وارد کنید" required>
+                        <div class="validation-error" id="purposeError">لطفاً یک کد عددی معتبر وارد کنید</div>
                     </div>
                     
                     <div class="form-group">
@@ -460,7 +554,8 @@ if (!$conn) {
                     
                     <div class="form-group">
                         <label for="description"><i class="fas fa-align-right"></i> توضیحات</label>
-                        <textarea id="description" name="description" placeholder="توضیحات اضافی..."></textarea>
+                        <textarea id="description" name="description" placeholder="توضیحات اضافی..." required></textarea>
+                        <div class="validation-error" id="descriptionError">لطفاً توضیحات را وارد کنید</div>
                     </div>
                     
                     <button type="submit" class="btn-submit" id="submitBtn">
@@ -501,7 +596,7 @@ if (!$conn) {
         </div>
         
         <footer>
-            <p>سیستم مدیریت بودجه با MySQL &copy; ۱۴۰۲ | نسخه ۱.۰</p>
+            <p>سیستم مدیریت بودجه با MySQL &copy; ۱۴۰4 | نسخه ۱.۰</p>
         </footer>
     </div>
     
@@ -509,7 +604,8 @@ if (!$conn) {
 
     <script>
         // متغیرهای سراسری
-        const API_BASE = window.location.origin + '/budget-system/api';
+        // Correct API base for this installation
+        const API_BASE = window.location.origin + '/budget/api';
         let categories = [];
         let currentOffset = 0;
         const limit = 5;
@@ -562,6 +658,7 @@ if (!$conn) {
             } catch (error) {
                 console.error('خطا در بارگذاری دسته‌بندی‌ها:', error);
                 showNotification('خطا در بارگذاری دسته‌بندی‌ها', 'error');
+                
             }
         }
         
@@ -662,18 +759,29 @@ if (!$conn) {
                 itemElement.className = 'budget-item';
                 itemElement.style.borderRightColor = item.category_color || '#1a73e8';
                 itemElement.innerHTML = `
-                    <h3>${item.purpose}</h3>
-                    <div class="budget-amount">${formatNumber(item.amount)} افغانی</div>
-                    <div><strong>دسته:</strong> ${item.category_name}</div>
-                    ${item.description ? `<p>${item.description}</p>` : ''}
-                    <div class="budget-date">${formatDate(item.created_at)}</div>
-                    <div style="margin-top: 10px;">
-                        <button onclick="deleteItem(${item.id})" class="category-tag" style="background-color: #ffebee; color: #d32f2f; border-color: #ffcdd2; font-size: 0.8rem;">
-                            <i class="fas fa-trash"></i> حذف
-                        </button>
+                    <div class="item-section header">
+                        <h3>کد بودجه: ${item.purpose}</h3>
+                    </div>
+                    <div class="item-section body">
+                        <div class="budget-amount">${formatNumber(item.amount)} افغانی</div>
+                        <div><span class="category-badge" style="background:${item.category_color || '#1a73e8'}">${item.category_name}</span></div>
+                        ${item.description ? `<div class="budget-desc">${item.description}</div>` : ''}
+                    </div>
+                    <div class="item-section footer">
+                        <div class="budget-date">${formatDate(item.created_at)}</div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <button onclick="editItem(this)" class="category-tag" style="background-color: #e8f5e9; color: #1b5e20; border-color: #c8e6c9; font-size: 0.8rem;">
+                                <i class="fas fa-edit"></i> ویرایش
+                            </button>
+                            <button onclick="deleteItem(${item.id})" class="category-tag" style="background-color: #ffebee; color: #d32f2f; border-color: #ffcdd2; font-size: 0.8rem;">
+                                <i class="fas fa-trash"></i> حذف
+                            </button>
+                        </div>
                     </div>
                 `;
                 previewContainer.appendChild(itemElement);
+                // store the item data on the element for editing
+                try { itemElement.dataset.item = JSON.stringify(item); } catch(e) { /* ignore */ }
             });
         }
         
@@ -711,19 +819,56 @@ if (!$conn) {
                 showNotification('خطا در اتصال به سرور', 'error');
             }
         }
+
+        // ویرایش آیتم (ویرایش مقدار و توضیحات)
+        async function editItem(button) {
+            const itemEl = button.closest('.budget-item');
+            if (!itemEl || !itemEl.dataset.item) return showNotification('اطلاعات آیتم در دسترس نیست', 'error');
+            let item;
+            try { item = JSON.parse(itemEl.dataset.item); } catch (e) { return showNotification('خطا در خواندن اطلاعات آیتم', 'error'); }
+
+            // پرس و جو برای مقدار و توضیحات جدید
+            const newAmountRaw = prompt('مقدار جدید را وارد کنید:', item.amount);
+            if (newAmountRaw === null) return; // cancelled
+            const newAmount = parseFloat(String(newAmountRaw).replace(/,/g, ''));
+            if (isNaN(newAmount) || newAmount <= 0) return showNotification('لطفاً مقدار عددی معتبر وارد کنید', 'error');
+
+            const newDesc = prompt('توضیحات جدید را وارد کنید (خالی برای حذف):', item.description || '');
+            if (newDesc === null) return; // cancelled
+
+            // ارسال درخواست به API
+            try {
+                const res = await fetch(`${API_BASE}/budget.php`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: item.id, amount: newAmount, description: newDesc })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showNotification('آیتم با موفقیت به‌روزرسانی شد', 'success');
+                    // رفرش لیست
+                    await loadBudgetItems(true);
+                } else {
+                    showNotification(data.message || 'خطا در به‌روزرسانی آیتم', 'error');
+                }
+            } catch (err) {
+                showNotification('خطا در اتصال به سرور', 'error');
+            }
+        }
         
         // ارسال فرم
         budgetForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const purpose = document.getElementById('purpose').value.trim();
+            const purposeRaw = document.getElementById('purpose').value;
+            const purposeNum = purposeRaw === '' ? NaN : parseInt(purposeRaw, 10);
             const category_id = document.getElementById('category_id').value;
             const amount = document.getElementById('amount').value;
             const description = document.getElementById('description').value.trim();
             
             // اعتبارسنجی
-            if (!purpose) {
-                showValidationError('purposeError', 'لطفاً مقصد بودجه را وارد کنید');
+            if (isNaN(purposeNum)) {
+                showValidationError('purposeError', 'لطفاً یک کد عددی معتبر وارد کنید');
                 return;
             }
             
@@ -731,7 +876,11 @@ if (!$conn) {
                 showNotification('لطفاً یک دسته‌بندی انتخاب کنید', 'error');
                 return;
             }
-            
+            // validate description (required)
+            if (!description || description.length === 0) {
+                showValidationError('descriptionError', 'لطفاً توضیحات را وارد کنید');
+                return;
+            }
             const amountNum = parseFloat(amount.replace(/,/g, ''));
             if (!amount || isNaN(amountNum) || amountNum <= 0) {
                 showValidationError('amountError', 'لطفاً مقدار معتبر وارد کنید');
@@ -749,7 +898,7 @@ if (!$conn) {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        purpose: purpose,
+                        purpose: purposeNum,
                         category_id: parseInt(category_id),
                         amount: amountNum,
                         description: description
@@ -848,22 +997,97 @@ if (!$conn) {
             
             e.target.value = value;
         });
+
+        // اعتبارسنجی ورودی کد بودجه: اجازه فقط ارقام (عدد صحیح)
+        const purposeInput = document.getElementById('purpose');
+        purposeInput.addEventListener('input', function(e) {
+            // حذف هر کاراکتر غیر رقمی
+            const cleaned = String(e.target.value).replace(/[^0-9]/g, '');
+            if (e.target.value !== cleaned) {
+                e.target.value = cleaned;
+            }
+        });
+
+        // پاک‌سازی محتوای پیست شده تا فقط ارقام نگه‌داشته شود
+        purposeInput.addEventListener('paste', function(e) {
+            e.preventDefault();
+            const paste = (e.clipboardData || window.clipboardData).getData('text');
+            const cleaned = paste.replace(/[^0-9]/g, '');
+            const el = e.target;
+            const start = el.selectionStart;
+            const end = el.selectionEnd;
+            const newVal = el.value.slice(0, start) + cleaned + el.value.slice(end);
+            el.value = newVal;
+            // trigger input event
+            el.dispatchEvent(new Event('input'));
+        });
+
+        // جلوگیری از وارد کردن کاراکترهای غیرعددی با کی‌پرس
+        purposeInput.addEventListener('keydown', function(e) {
+            // اجازه کلیدهای کنترل و ارقام
+            const allowedKeys = ['Backspace','ArrowLeft','ArrowRight','Delete','Tab','Home','End'];
+            if (allowedKeys.indexOf(e.key) !== -1) return;
+            // Allow Ctrl/Cmd shortcuts
+            if (e.ctrlKey || e.metaKey) return;
+            // Allow numpad digits and digits
+            if (/^[0-9]$/.test(e.key)) return;
+            e.preventDefault();
+        });
         
         // فرمت اعداد
         function formatNumber(num) {
             return new Intl.NumberFormat('fa-IR').format(num);
         }
         
-        // فرمت تاریخ
+        // فرمت تاریخ — تبدیل به تقویم جلالی و نمایش نام ماه به دری
+        function gregorianToJalali(gy, gm, gd) {
+            var g_d_m = [0,31,59,90,120,151,181,212,243,273,304,334];
+            var gy2 = gy - 1600;
+            var gm2 = gm - 1;
+            var gd2 = gd - 1;
+            var g_day_no = 365 * gy2 + Math.floor((gy2 + 3) / 4) - Math.floor((gy2 + 99) / 100) + Math.floor((gy2 + 399) / 400);
+            g_day_no += g_d_m[gm2] + gd2;
+            if (gm2 > 1 && ((gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0))) g_day_no++;
+            var j_day_no = g_day_no - 79;
+            var j_np = Math.floor(j_day_no / 12053);
+            j_day_no = j_day_no % 12053;
+            var jy = 979 + 33 * j_np + 4 * Math.floor(j_day_no / 1461);
+            j_day_no = j_day_no % 1461;
+            if (j_day_no >= 366) {
+                jy += Math.floor((j_day_no - 366) / 365);
+                j_day_no = (j_day_no - 366) % 365;
+            }
+            var jm = 0;
+            var jd = 0;
+            var jalali_months_days = [31,31,31,31,31,31,30,30,30,30,30,29];
+            for (var i = 0; i < 12; i++) {
+                if (j_day_no < jalali_months_days[i]) {
+                    jm = i + 1;
+                    jd = j_day_no + 1;
+                    break;
+                }
+                j_day_no -= jalali_months_days[i];
+            }
+            return [jy, jm, jd];
+        }
+
+        function pad2(n){ return n < 10 ? '0' + n : n; }
+
+        // Dari month names (Jalali months)
+        const DARI_MONTHS = ['حمل','ثور','جوزا','سرطان','اسد','سنبله','میزان','عقرب','قوس','جدی','دلو','حوت'];
+
         function formatDate(dateString) {
             const date = new Date(dateString);
-            return date.toLocaleDateString('fa-IR', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+            if (isNaN(date.getTime())) return dateString;
+            const gy = date.getFullYear();
+            const gm = date.getMonth() + 1;
+            const gd = date.getDate();
+            const hours = pad2(date.getHours());
+            const minutes = pad2(date.getMinutes());
+            const j = gregorianToJalali(gy, gm, gd);
+            const jy = j[0], jm = j[1], jd = j[2];
+            const monthName = DARI_MONTHS[jm - 1] || '';
+            return `${jd} ${monthName} ${jy} - ${hours}:${minutes}`;
         }
         
         // نمایش خطای اعتبارسنجی

@@ -96,8 +96,9 @@ function handlePost() {
     // اعتبارسنجی
     $errors = [];
     
-    if (!isset($data['purpose']) || empty(trim($data['purpose']))) {
-        $errors[] = 'مقصد بودجه الزامی است';
+    // `purpose` is treated as budget code — must be an integer
+    if (!isset($data['purpose']) || filter_var($data['purpose'], FILTER_VALIDATE_INT) === false) {
+        $errors[] = 'کد بودجه باید عدد صحیح باشد';
     }
     
     if (!isset($data['category_id']) || !is_numeric($data['category_id'])) {
@@ -107,6 +108,10 @@ function handlePost() {
     if (!isset($data['amount']) || !is_numeric($data['amount']) || $data['amount'] <= 0) {
         $errors[] = 'مقدار باید عددی مثبت باشد';
     }
+
+    if (!isset($data['description']) || trim($data['description']) === '') {
+        $errors[] = 'توضیحات الزامی است';
+    }
     
     if (!empty($errors)) {
         http_response_code(400);
@@ -114,10 +119,10 @@ function handlePost() {
         return;
     }
     
-    $purpose = trim($data['purpose']);
+    $purpose = (int)$data['purpose'];
     $category_id = (int)$data['category_id'];
     $amount = (float)$data['amount'];
-    $description = isset($data['description']) ? trim($data['description']) : null;
+    $description = trim($data['description']);
     
     try {
         // بررسی وجود دسته‌بندی
@@ -183,8 +188,14 @@ function handlePut() {
     $params = [':id' => $id];
     
     if (isset($data['purpose'])) {
+        // validate purpose if provided
+        if (filter_var($data['purpose'], FILTER_VALIDATE_INT) === false) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'کد بودجه باید عدد صحیح باشد']);
+            return;
+        }
         $updates[] = 'purpose = :purpose';
-        $params[':purpose'] = trim($data['purpose']);
+        $params[':purpose'] = (int)$data['purpose'];
     }
     
     if (isset($data['category_id'])) {
