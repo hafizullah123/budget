@@ -20,18 +20,10 @@ if (!$conn) {
 $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
-    case 'GET':
-        handleGet();
-        break;
-    case 'POST':
-        handlePost();
-        break;
-    case 'PUT':
-        handlePut();
-        break;
-    case 'DELETE':
-        handleDelete();
-        break;
+    case 'GET':    handleGet();    break;
+    case 'POST':   handlePost();   break;
+    case 'PUT':    handlePut();    break;
+    case 'DELETE': handleDelete(); break;
     default:
         http_response_code(405);
         echo json_encode(['success' => false, 'message' => 'متد غیرمجاز']);
@@ -39,145 +31,141 @@ switch ($method) {
 
 function handleGet() {
     global $conn;
-    
+
     try {
-        $query = "SELECT * FROM categories ORDER BY name";
+        $query = "SELECT * FROM categories ORDER BY parent_id ASC, name ASC";
         $stmt = $conn->prepare($query);
         $stmt->execute();
-        
-        $categories = $stmt->fetchAll();
-        
+
         echo json_encode([
             'success' => true,
-            'data' => $categories,
-            'count' => count($categories)
+            'data' => $stmt->fetchAll(),
         ]);
+
     } catch(PDOException $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'خطا در دریافت دسته‌بندی‌ها: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'خطا در دریافت: ' . $e->getMessage()]);
     }
 }
 
 function handlePost() {
     global $conn;
-    
+
     $data = json_decode(file_get_contents("php://input"), true);
-    
-    if (!isset($data['name']) || empty(trim($data['name']))) {
+
+    if (!isset($data['name'])) {
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'نام دسته‌بندی الزامی است']);
+        echo json_encode(['success' => false, 'message' => 'نام الزامی است']);
         return;
     }
-    
+
     $name = trim($data['name']);
-    $color = isset($data['color']) ? $data['color'] : '#1a73e8';
-    
+    $color = $data['color'] ?? '#1a73e8';
+    $parent_id = $data['parent_id'] ?? null;
+
     try {
-        // بررسی تکراری نبودن
-        $checkQuery = "SELECT id FROM categories WHERE name = :name";
-        $checkStmt = $conn->prepare($checkQuery);
-        $checkStmt->execute([':name' => $name]);
-        
-        if ($checkStmt->rowCount() > 0) {
-            echo json_encode(['success' => false, 'message' => 'دسته‌بندی با این نام از قبل وجود دارد']);
-            return;
-        }
-        
-        $query = "INSERT INTO categories (name, color) VALUES (:name, :color)";
+        $query = "INSERT INTO categories (name, color, parent_id) VALUES (:name, :color, :parent_id)";
         $stmt = $conn->prepare($query);
+
         $stmt->execute([
             ':name' => $name,
-            ':color' => $color
+            ':color' => $color,
+            ':parent_id' => $parent_id
         ]);
-        
-        $lastId = $conn->lastInsertId();
-        
+
         echo json_encode([
             'success' => true,
-            'message' => 'دسته‌بندی با موفقیت اضافه شد',
-            'id' => $lastId
+            'message' => 'با موفقیت اضافه شد',
+            'id' => $conn->lastInsertId()
         ]);
+
     } catch(PDOException $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'خطا در اضافه کردن دسته‌بندی: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'خطا در اضافه کردن: ' . $e->getMessage()]);
     }
 }
 
 function handlePut() {
     global $conn;
-    
+
     $data = json_decode(file_get_contents("php://input"), true);
-    
+
     if (!isset($data['id']) || !isset($data['name'])) {
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'شناسه و نام دسته‌بندی الزامی است']);
+        echo json_encode(['success' => false, 'message' => 'شناسه و نام الزامی است']);
         return;
     }
-    
+
     $id = $data['id'];
     $name = trim($data['name']);
-    $color = isset($data['color']) ? $data['color'] : '#1a73e8';
-    
+    $color = $data['color'] ?? '#1a73e8';
+    $parent_id = $data['parent_id'] ?? null;
+
     try {
-        $query = "UPDATE categories SET name = :name, color = :color WHERE id = :id";
+        $query = "UPDATE categories 
+                  SET name = :name, color = :color, parent_id = :parent_id 
+                  WHERE id = :id";
         $stmt = $conn->prepare($query);
+
         $stmt->execute([
             ':id' => $id,
             ':name' => $name,
-            ':color' => $color
+            ':color' => $color,
+            ':parent_id' => $parent_id
         ]);
-        
-        if ($stmt->rowCount() > 0) {
-            echo json_encode(['success' => true, 'message' => 'دسته‌بندی با موفقیت به‌روزرسانی شد']);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'دسته‌بندی یافت نشد']);
-        }
+
+        echo json_encode(['success' => true, 'message' => 'با موفقیت به‌روزرسانی شد']);
+
     } catch(PDOException $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'خطا در به‌روزرسانی دسته‌بندی: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'خطا در به‌روزرسانی: ' . $e->getMessage()]);
     }
 }
 
 function handleDelete() {
     global $conn;
-    
+
     $data = json_decode(file_get_contents("php://input"), true);
-    
+
     if (!isset($data['id'])) {
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'شناسه دسته‌بندی الزامی است']);
+        echo json_encode(['success' => false, 'message' => 'شناسه الزامی است']);
         return;
     }
-    
+
     $id = $data['id'];
-    
+
     try {
-        // بررسی استفاده از دسته‌بندی
-        $checkQuery = "SELECT COUNT(*) as count FROM budget_items WHERE category_id = :id";
-        $checkStmt = $conn->prepare($checkQuery);
-        $checkStmt->execute([':id' => $id]);
-        $result = $checkStmt->fetch();
-        
-        if ($result['count'] > 0) {
+        // check if it has subcategories
+        $check = $conn->prepare("SELECT COUNT(*) AS count FROM categories WHERE parent_id = :id");
+        $check->execute([':id' => $id]);
+        if ($check->fetch()['count'] > 0) {
             echo json_encode([
-                'success' => false, 
-                'message' => 'این دسته‌بندی در آیتم‌های بودجه استفاده شده و قابل حذف نیست'
+                'success' => false,
+                'message' => 'ابتدا زیر دسته‌ها را حذف کنید'
             ]);
             return;
         }
-        
-        $query = "DELETE FROM categories WHERE id = :id";
-        $stmt = $conn->prepare($query);
-        $stmt->execute([':id' => $id]);
-        
-        if ($stmt->rowCount() > 0) {
-            echo json_encode(['success' => true, 'message' => 'دسته‌بندی با موفقیت حذف شد']);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'دسته‌بندی یافت نشد']);
+
+        // check budget items usage
+        $check2 = $conn->prepare("SELECT COUNT(*) AS count FROM budget_items WHERE category_id = :id");
+        $check2->execute([':id' => $id]);
+        if ($check2->fetch()['count'] > 0) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'این دسته‌بندی در آیتم‌های بودجه استفاده شده'
+            ]);
+            return;
         }
+
+        $stmt = $conn->prepare("DELETE FROM categories WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+
+        echo json_encode(['success' => true, 'message' => 'با موفقیت حذف شد']);
+
     } catch(PDOException $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'خطا در حذف دسته‌بندی: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'خطا در حذف: ' . $e->getMessage()]);
     }
 }
 ?>

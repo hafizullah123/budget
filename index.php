@@ -504,7 +504,7 @@ if (!$conn) {
         <?php endif; ?>
         
         <header>
-            <h1><i class="fas fa-database"></i> سیستم مدیریت بودجه</h1>
+            <h1><i class="fas fa-database"></i> سیستم مدیریت بودیجه</h1>
             <p>ذخیره‌سازی داده‌ها در پایگاه داده MySQL</p>
             <div class="connection-status <?php echo !isset($error_message) ? 'connected' : 'disconnected'; ?>" id="connectionStatus">
                 <i class="fas fa-<?php echo !isset($error_message) ? 'check-circle' : 'times-circle'; ?>"></i>
@@ -514,12 +514,12 @@ if (!$conn) {
         
         <div class="content-wrapper">
             <section class="form-section">
-                <h2 class="section-title"><i class="fas fa-plus-circle"></i> آیتم جدید بودجه</h2>
+                <h2 class="section-title"><i class="fas fa-plus-circle"></i> آیتم جدید بودیجه</h2>
                 
                 <form id="budgetForm">
                     <div class="form-group">
-                        <label for="purpose"><i class="fas fa-hashtag"></i> کد بودجه *</label>
-                        <input type="number" step="1" inputmode="numeric" min="0" id="purpose" name="purpose" placeholder="کد عددی بودجه را وارد کنید" required>
+                        <label for="purpose"><i class="fas fa-hashtag"></i> کد بودیجه *</label>
+                        <input type="number" step="1" inputmode="numeric" min="0" id="purpose" name="purpose" placeholder="کد عددی بودیجه را وارد کنید" required>
                         <div class="validation-error" id="purposeError">لطفاً یک کد عددی معتبر وارد کنید</div>
                     </div>
                     
@@ -528,6 +528,9 @@ if (!$conn) {
                         <div class="category-tags" id="categoryTags">
                             <!-- دسته‌بندی‌ها از API لود می‌شوند -->
                         </div>
+                        <div class="category-tags" id="categoryTags2" style="margin-top:8px;">
+                            <!-- duplicate category selector -->
+                        </div>
                         <div style="display: flex; gap: 10px; margin-top: 10px;">
                             <button type="button" id="addCategoryBtn" class="category-tag" style="background-color: #f0f0f0; color: #666;">
                                 <i class="fas fa-plus"></i> دسته جدید
@@ -535,12 +538,14 @@ if (!$conn) {
                         </div>
                         <div class="new-category-input" id="newCategoryInput">
                             <input type="text" id="newCategory" placeholder="نام دسته جدید">
+                            
                             <div style="display: flex; gap: 10px; margin-top: 10px;">
                                 <button type="button" id="saveCategoryBtn" class="btn-submit" style="padding: 10px 20px;">ذخیره</button>
                                 <button type="button" id="cancelCategoryBtn" class="btn-submit" style="padding: 10px 20px; background: #666;">لغو</button>
                             </div>
                         </div>
                         <input type="hidden" id="category_id" name="category_id" value="">
+                        <input type="hidden" id="category_id_2" name="category_id_2" value="">
                     </div>
                     
                     <div class="form-group">
@@ -565,7 +570,7 @@ if (!$conn) {
             </section>
             
             <section class="preview-section">
-                <h2 class="section-title"><i class="fas fa-eye"></i> آیتم‌های بودجه</h2>
+                <h2 class="section-title"><i class="fas fa-eye"></i> آیتم‌های بودیجه</h2>
                 <div id="previewContainer">
                     <div class="empty-preview">
                         <i class="fas fa-spinner fa-spin fa-3x"></i>
@@ -583,7 +588,7 @@ if (!$conn) {
         <div class="stats">
             <div class="stat-box">
                 <div class="stat-value" id="totalBudget">0</div>
-                <div class="stat-label">مجموع بودجه</div>
+                <div class="stat-label">مجموع بودیجه</div>
             </div>
             <div class="stat-box">
                 <div class="stat-value" id="itemCount">0</div>
@@ -591,12 +596,12 @@ if (!$conn) {
             </div>
             <div class="stat-box">
                 <div class="stat-value" id="avgBudget">0</div>
-                <div class="stat-label">میانگین</div>
+                <div class="stat-label">اوسط</div>
             </div>
         </div>
         
         <footer>
-            <p>سیستم مدیریت بودجه با MySQL &copy; ۱۴۰4 | نسخه ۱.۰</p>
+            <p>سیستم مدیریت بودجه با MySQL &copy; ۱۴۰۴ | نسخه ۱.۰</p>
         </footer>
     </div>
     
@@ -665,30 +670,101 @@ if (!$conn) {
         // نمایش دسته‌بندی‌ها
         function renderCategories() {
             categoryTags.innerHTML = '';
-            
-            categories.forEach(category => {
-                const tag = document.createElement('div');
-                tag.className = 'category-tag';
-                tag.textContent = category.name;
-                tag.dataset.id = category.id;
-                tag.style.borderLeftColor = category.color || '#1a73e8';
-                tag.style.borderLeftWidth = '3px';
-                tag.style.borderLeftStyle = 'solid';
-                
-                tag.addEventListener('click', () => {
-                    document.querySelectorAll('.category-tag').forEach(t => {
-                        t.classList.remove('active');
-                    });
-                    tag.classList.add('active');
-                    categoryInput.value = category.id;
-                });
-                
-                categoryTags.appendChild(tag);
+
+            // build parent -> children map
+            const parents = categories.filter(c => !c.parent_id || c.parent_id === 0);
+            const childrenMap = {};
+            categories.forEach(c => {
+                if (c.parent_id && c.parent_id != 0) {
+                    if (!childrenMap[c.parent_id]) childrenMap[c.parent_id] = [];
+                    childrenMap[c.parent_id].push(c);
+                }
             });
-            
-            // انتخاب اولین دسته به صورت پیش‌فرض
-            if (categories.length > 0 && !categoryInput.value) {
-                categoryTags.firstChild.click();
+
+            // (no dropdown for new category) nothing to populate here
+
+            // render each parent and its children
+            parents.forEach(parent => {
+                const pTag = document.createElement('div');
+                pTag.className = 'category-tag';
+                pTag.textContent = parent.name;
+                pTag.dataset.id = parent.id;
+                pTag.style.borderLeftColor = parent.color || '#1a73e8';
+                pTag.style.borderLeftWidth = '3px';
+                pTag.style.borderLeftStyle = 'solid';
+
+                pTag.addEventListener('click', () => {
+                    document.querySelectorAll('.category-tag').forEach(t => t.classList.remove('active'));
+                    pTag.classList.add('active');
+                    categoryInput.value = parent.id;
+                });
+
+                categoryTags.appendChild(pTag);
+
+                // render children, if any
+                const kids = childrenMap[parent.id] || [];
+                if (kids.length > 0) {
+                    const childWrap = document.createElement('div');
+                    childWrap.style.display = 'flex';
+                    childWrap.style.flexWrap = 'wrap';
+                    childWrap.style.gap = '6px';
+                    childWrap.style.margin = '6px 0 12px 10px';
+
+                    kids.forEach(child => {
+                        const cTag = document.createElement('div');
+                        cTag.className = 'category-tag';
+                        cTag.textContent = child.name;
+                        cTag.dataset.id = child.id;
+                        cTag.style.background = '#f7f7f7';
+                        cTag.style.color = '#333';
+                        cTag.style.fontSize = '0.9rem';
+                        cTag.style.borderLeftColor = child.color || '#90caf9';
+                        cTag.style.borderLeftWidth = '3px';
+                        cTag.style.borderLeftStyle = 'solid';
+
+                        cTag.addEventListener('click', (ev) => {
+                            ev.stopPropagation();
+                            document.querySelectorAll('.category-tag').forEach(t => t.classList.remove('active'));
+                            cTag.classList.add('active');
+                            categoryInput.value = child.id;
+                        });
+
+                        childWrap.appendChild(cTag);
+                    });
+
+                    categoryTags.appendChild(childWrap);
+                }
+            });
+
+            // if there are no parents (all categories might be flat), render any remaining categories
+            const renderedIds = new Set(parents.map(p => p.id));
+            categories.forEach(cat => {
+                if (!renderedIds.has(cat.id) && (!cat.parent_id || cat.parent_id == 0)) {
+                    const tag = document.createElement('div');
+                    tag.className = 'category-tag';
+                    tag.textContent = cat.name;
+                    tag.dataset.id = cat.id;
+                    tag.style.borderLeftColor = cat.color || '#1a73e8';
+                    tag.style.borderLeftWidth = '3px';
+                    tag.style.borderLeftStyle = 'solid';
+                    tag.addEventListener('click', () => {
+                        document.querySelectorAll('.category-tag').forEach(t => t.classList.remove('active'));
+                        tag.classList.add('active');
+                        categoryInput.value = cat.id;
+                    });
+                    categoryTags.appendChild(tag);
+                }
+            });
+
+            // default select first available category (prefer parent, else first category)
+            if (!categoryInput.value) {
+                if (parents.length > 0) {
+                    const first = categoryTags.querySelector('[data-id]');
+                    if (first) first.click();
+                } else if (categories.length > 0) {
+                    const firstAll = categoryTags.querySelector('[data-id]');
+                    if (firstAll) firstAll.click();
+                }
             }
         }
         
@@ -722,7 +798,7 @@ if (!$conn) {
                         previewContainer.innerHTML = `
                             <div class="empty-preview">
                                 <i class="fas fa-inbox fa-3x" style="color: #ccc;"></i>
-                                <p>هنوز هیچ آیتم بودجه اضافه نشده است.</p>
+                                <p>هنوز هیچ آیتم بودیجه اضافه نشده است.</p>
                             </div>
                         `;
                         loadMoreBtn.style.display = 'none';
@@ -908,7 +984,7 @@ if (!$conn) {
                 const data = await response.json();
                 
                 if (data.success) {
-                    showNotification('آیتم بودجه با موفقیت اضافه شد', 'success');
+                    showNotification('آیتم بودیجه با موفقیت اضافه شد', 'success');
                     budgetForm.reset();
                     renderCategories(); // بازنشانی انتخاب دسته
                     loadBudgetItems(true);
@@ -943,34 +1019,40 @@ if (!$conn) {
         
         saveCategoryBtn.addEventListener('click', async function() {
             const name = newCategory.value.trim();
-            
+
             if (!name) {
                 showNotification('نام دسته را وارد کنید', 'error');
                 return;
             }
-            
+
+            const payload = { name: name };
+
+            saveCategoryBtn.disabled = true;
+            saveCategoryBtn.textContent = 'در حال ذخیره...';
+
             try {
                 const response = await fetch(`${API_BASE}/categories.php`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ name: name })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     showNotification('دسته جدید اضافه شد', 'success');
                     newCategoryInput.style.display = 'none';
                     addCategoryBtn.style.display = 'block';
                     newCategory.value = '';
-                    loadCategories();
+                    await loadCategories();
                 } else {
                     showNotification(data.message || 'خطا در اضافه کردن دسته', 'error');
                 }
             } catch (error) {
                 showNotification('خطا در اتصال به سرور', 'error');
+            } finally {
+                saveCategoryBtn.disabled = false;
+                saveCategoryBtn.innerHTML = 'ذخیره';
             }
         });
         
