@@ -505,10 +505,14 @@ if (!$conn) {
         
         <header>
             <h1><i class="fas fa-database"></i> سیستم مدیریت بودیجه</h1>
-            <p>ذخیره‌سازی داده‌ها در پایگاه داده MySQL</p>
+            <p>ذخیره‌سازی داده‌ها در پایگاه داده MySQL</p><br>
+                            <a href="expense.php">expense page</a>
+                                                        <a href="insert_budget.php">expense page</a>
+
+
             <div class="connection-status <?php echo !isset($error_message) ? 'connected' : 'disconnected'; ?>" id="connectionStatus">
-                <i class="fas fa-<?php echo !isset($error_message) ? 'check-circle' : 'times-circle'; ?>"></i>
-                <?php echo !isset($error_message) ? 'اتصال برقرار' : 'اتصال قطع'; ?>
+                <i class="fas fa-<?php echo !isset($error_message) ? 'check-circle' : 'times-circle'; ?>"></i><br>
+                <?php echo !isset($error_message) ? 'اتصال برقرار' : 'اتصال قطع'; ?><br>
             </div>
         </header>
         
