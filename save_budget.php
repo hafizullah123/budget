@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Fetch all saved data for display, sorted by code ascending
-$result = $conn->query("SELECT * FROM budget_details ORDER BY code ASC");
+$result = $conn->query("SELECT * FROM budget_details ORDER BY sub_code ASC");
 ?>
 
 <!DOCTYPE html>
@@ -152,8 +152,8 @@ function addRow() {
 <table>
 <tr class="gray center">
     <th>ID</th>
-    <th>کوډ</th>
-    <th>باب</th>
+    <th>کوډ عمومی</th>
+    <th>کوډ فرعی</th>
     <th>توضیحات</th>
     <th>نېټه</th>
     <th>بودجه</th>
@@ -166,8 +166,8 @@ function addRow() {
     <?php while($row = $result->fetch_assoc()): ?>
         <tr class="center">
             <td><?php echo $row['id']; ?></td>
-            <td><?php echo htmlspecialchars($row['code']); ?></td>
-            <td><?php echo htmlspecialchars($row['bab']); ?></td>
+            <td><?php echo htmlspecialchars($row['general_code']); ?></td>
+            <td><?php echo htmlspecialchars($row['sub_code']); ?></td>
             <td><?php echo htmlspecialchars($row['description']); ?></td>
             <td><?php echo $row['date']; ?></td>
             <td><?php echo number_format($row['budget'],2); ?></td>

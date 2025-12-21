@@ -19,7 +19,7 @@ $babResult = $conn->query("
 <title>سند مصرف</title>
 <style>
 body{font-family:Tahoma, Arial; background:#fff;}
-.page{width:250mm; margin:auto; padding:10mm; border:2px solid #000;}
+.page{width:300mm; margin:auto; padding:10mm; border:2px solid #000;}
 table{width:100%; border-collapse:collapse; font-size:13px;}
 td, th{border:1px solid #000; padding:6px; vertical-align:middle;}
 .no-border td{border:none;}
@@ -122,11 +122,11 @@ button{padding:8px 15px; cursor:pointer;}
 <!-- SECOND HEADER ROW -->
 <table>
     <colgroup>
-        <col style="width:40%">
-        <col style="width:15%">
-        <col style="width:15%">
-        <col style="width:15%">
-        <col style="width:15%">
+        <col style="width:60%">
+        <col style="width:10%">
+        <col style="width:10%">
+        <col style="width:10%">
+        <col style="width:10%">
     </colgroup>
 
 <tr class="gray center">
