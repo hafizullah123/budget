@@ -53,7 +53,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $percent
     );
 
+    // Prepare check for duplicates
+    $check_stmt = $conn->prepare("SELECT id FROM budget_details WHERE general_code = ? AND sub_code = ?");
+    $check_stmt->bind_param("ss", $general_code, $sub_code);
+
     $inserted_rows = 0;
+    $skipped_rows = 0;
     for ($i = 0; $i < count($general_codes_input); $i++) {
         // Convert all numeric inputs to English numbers
         $general_code = convertToEnglishNumbers($general_codes_input[$i]);
@@ -64,16 +69,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $actual       = convertToEnglishNumbers($actuals[$i]) ?: 0;
         $percent      = convertToEnglishNumbers($percents[$i]) ?: 0;
 
-        if ($stmt->execute()) {
-            $inserted_rows++;
+        // Check for duplicates only if sub_code is not empty
+        $is_duplicate = false;
+        if (!empty($sub_code)) {
+            $check_stmt->execute();
+            $result_check = $check_stmt->get_result();
+            if ($result_check->num_rows > 0) {
+                $is_duplicate = true;
+            }
+        }
+
+        if (!$is_duplicate) {
+            if ($stmt->execute()) {
+                $inserted_rows++;
+            }
+        } else {
+            $skipped_rows++;
         }
     }
 
     $stmt->close();
+    $check_stmt->close();
     
     // Use PRG pattern - redirect to GET after POST
     session_start();
-    $_SESSION['success_message'] = "$inserted_rows ردیف با موفقیت ذخیره شد!";
+    $message = "$inserted_rows ردیف با موفقیت ذخیره شد!";
+    if ($skipped_rows > 0) {
+        $message .= " $skipped_rows ردیف به دلیل تکراری بودن رد شد!";
+    }
+    $_SESSION['success_message'] = $message;
     header("Location: " . $_SERVER['PHP_SELF'] . "?success=1");
     exit();
 }
@@ -252,8 +276,7 @@ function addRow(){
             <input name="sub_code[]" 
                    class="number-input" 
                    oninput="validateNumericField(this)" 
-                   onblur="validateNumericField(this)" 
-                   required>
+                   onblur="validateNumericField(this)">
         </td>
         <td><input name="description[]" placeholder="توضیحات" required></td>
         <td><input name="date[]" type="date" required></td>
@@ -394,8 +417,7 @@ function showPersianPreview(el) {
         <input name="sub_code[]" 
                class="number-input" 
                oninput="validateNumericField(this)" 
-               onblur="validateNumericField(this)" 
-               required>
+               onblur="validateNumericField(this)">
     </td>
     <td><input name="description[]" required></td>
     <td><input name="date[]" type="date" required></td>
