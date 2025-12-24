@@ -646,7 +646,10 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- HEADER -->
 <table class="no-border">
 <tr>
-<td class="center"><strong>د افغانستان اسلامی امارت</strong><br>امارتی شرکتونو لوی ریاست</td>
+<td class="center"><strong>د افغانستان اسلامی امارت</strong><br>امارتی شرکتونو لوی ریاست<br>
+مالی او اداری معینیت<br>مالی او حساسبی ریاست <br>
+د محاسبی او معاشاتو آمریت</td>
+</tr>
 </tr>
 </table>
 
@@ -659,9 +662,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <option value="">-- د مصرف ډول انتخاب کړئ --</option>
 <?php echo $bab_options; ?>
 </select>
-<div class="bab-info">
-    <small>لیست باب‌ها از جدول budget_details</small>
-</div>
+
 </td>
 <td>
 <select name="expense_type_desc" required>
@@ -714,7 +715,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <tr class="center">
 <td><input name="asaar"></td>
 <td>افغانی</td>
-<td>۱۹۴۰۰۰</td>
+<td>194000</td>
 </tr>
 </table>
 
