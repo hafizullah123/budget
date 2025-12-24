@@ -74,10 +74,18 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['id'])){
     $id = intval($_POST['id']);
     
     // Main voucher data
+    $expense_type_code = intval($_POST['expense_type_code']);
+    $expense_type_desc = $conn->real_escape_string($_POST['expense_type_desc']);
     $voucher_number = $conn->real_escape_string($_POST['voucher_number']);
-    $expense_type = $conn->real_escape_string($_POST['expense_type']);
-    $year = $conn->real_escape_string($_POST['year']);
     $voucher_date = $conn->real_escape_string($_POST['voucher_date']);
+    $year = $conn->real_escape_string($_POST['year']);
+    $system_number = $conn->real_escape_string($_POST['system_number']);
+    $system_date = $conn->real_escape_string($_POST['system_date']);
+    $sgtas_number = $conn->real_escape_string($_POST['sgtas_number']);
+    $scan_number = $conn->real_escape_string($_POST['scan_number']);
+    $asaar = $conn->real_escape_string($_POST['asaar']);
+    $currency = $conn->real_escape_string($_POST['currency']);
+    $admin_code = $conn->real_escape_string($_POST['admin_code']);
     $total_debit = floatval($_POST['total_debit']);
     $total_credit = floatval($_POST['total_credit']);
     $payable_amount = floatval($_POST['payable_amount']);
@@ -89,10 +97,18 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['id'])){
     try {
         // UPDATE existing voucher
         $sql = "UPDATE expense_vouchers SET 
+                expense_type_code = $expense_type_code,
+                expense_type_desc = '$expense_type_desc',
                 voucher_number = '$voucher_number',
-                expense_type = '$expense_type',
-                year = '$year',
                 voucher_date = '$voucher_date',
+                year = '$year',
+                system_number = '$system_number',
+                system_date = '$system_date',
+                sgtas_number = '$sgtas_number',
+                scan_number = '$scan_number',
+                asaar = '$asaar',
+                currency = '$currency',
+                admin_code = '$admin_code',
                 total_debit = $total_debit,
                 total_credit = $total_credit,
                 payable_amount = $payable_amount,
@@ -134,15 +150,15 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['id'])){
         }
         
         // Insert bank info
-        if(!empty($_POST['bank_name'])){
-            $bank_name = $conn->real_escape_string($_POST['bank_name']);
+        if(!empty($_POST['bank_account'])){
             $bank_account = $conn->real_escape_string($_POST['bank_account']);
             $invoice_id = $conn->real_escape_string($_POST['invoice_id']);
+            $bank_name = $conn->real_escape_string($_POST['bank_name']);
             $bank_address = $conn->real_escape_string($_POST['bank_address']);
             
             $sql = "INSERT INTO expense_recipient_banks 
-                    (voucher_id, bank_name, bank_account, invoice_id, bank_address)
-                    VALUES ($id, '$bank_name', '$bank_account', '$invoice_id', '$bank_address')";
+                    (voucher_id, bank_account, invoice_id, bank_name, bank_address)
+                    VALUES ($id, '$bank_account', '$invoice_id', '$bank_name', '$bank_address')";
             $conn->query($sql);
         }
         
@@ -274,20 +290,56 @@ h2{text-align:center; margin-bottom:20px; color:#333;}
             <h4 class="section-title">مشخصات اصلی سند</h4>
             <div class="form-row">
                 <div class="form-group">
+                    <label>کد نوعیت مصرف *</label>
+                    <input type="number" name="expense_type_code" value="<?= htmlspecialchars($edit_voucher['expense_type_code']) ?>" required>
+                </div>
+                <div class="form-group">
+                    <label>توضیح نوعیت مصرف *</label>
+                    <input type="text" name="expense_type_desc" value="<?= htmlspecialchars($edit_voucher['expense_type_desc']) ?>" required>
+                </div>
+                <div class="form-group">
                     <label>شماره سند *</label>
                     <input type="text" name="voucher_number" value="<?= htmlspecialchars($edit_voucher['voucher_number']) ?>" required>
                 </div>
                 <div class="form-group">
-                    <label>نوعیت مصرف *</label>
-                    <input type="text" name="expense_type" value="<?= htmlspecialchars($edit_voucher['expense_type']) ?>" required>
+                    <label>نېټه *</label>
+                    <input type="date" name="voucher_date" value="<?= htmlspecialchars($edit_voucher['voucher_date']) ?>" required>
                 </div>
+            </div>
+            <div class="form-row">
                 <div class="form-group">
                     <label>کال *</label>
                     <input type="text" name="year" value="<?= htmlspecialchars($edit_voucher['year']) ?>" required>
                 </div>
                 <div class="form-group">
-                    <label>نېټه *</label>
-                    <input type="date" name="voucher_date" value="<?= htmlspecialchars($edit_voucher['voucher_date']) ?>" required>
+                    <label>شماره سیستم</label>
+                    <input type="text" name="system_number" value="<?= htmlspecialchars($edit_voucher['system_number']) ?>">
+                </div>
+                <div class="form-group">
+                    <label>نېټه سیستم</label>
+                    <input type="date" name="system_date" value="<?= htmlspecialchars($edit_voucher['system_date']) ?>">
+                </div>
+                <div class="form-group">
+                    <label>شماره سګټاس</label>
+                    <input type="text" name="sgtas_number" value="<?= htmlspecialchars($edit_voucher['sgtas_number']) ?>">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>شماره اسکن</label>
+                    <input type="text" name="scan_number" value="<?= htmlspecialchars($edit_voucher['scan_number']) ?>">
+                </div>
+                <div class="form-group">
+                    <label>اسعار</label>
+                    <input type="text" name="asaar" value="<?= htmlspecialchars($edit_voucher['asaar']) ?>">
+                </div>
+                <div class="form-group">
+                    <label>واحد پول</label>
+                    <input type="text" name="currency" value="<?= htmlspecialchars($edit_voucher['currency']) ?>">
+                </div>
+                <div class="form-group">
+                    <label>اداری کوډ</label>
+                    <input type="text" name="admin_code" value="<?= htmlspecialchars($edit_voucher['admin_code']) ?>">
                 </div>
             </div>
             <div class="form-row">
@@ -306,9 +358,11 @@ h2{text-align:center; margin-bottom:20px; color:#333;}
                 <div class="form-group">
                     <label>طریقه تادیه</label>
                     <select name="payment_method">
-                        <option value="نقد" <?= $edit_voucher['payment_method'] == 'نقد' ? 'selected' : '' ?>>نقد</option>
-                        <option value="بانک" <?= $edit_voucher['payment_method'] == 'بانک' ? 'selected' : '' ?>>بانک</option>
-                        <option value="چک" <?= $edit_voucher['payment_method'] == 'چک' ? 'selected' : '' ?>>چک</option>
+                        <option value="bank" <?= $edit_voucher['payment_method'] == 'bank' ? 'selected' : '' ?>>بانک</option>
+                        <option value="cash" <?= $edit_voucher['payment_method'] == 'cash' ? 'selected' : '' ?>>نقد</option>
+                        <option value="lc" <?= $edit_voucher['payment_method'] == 'lc' ? 'selected' : '' ?>>LC</option>
+                        <option value="direct" <?= $edit_voucher['payment_method'] == 'direct' ? 'selected' : '' ?>>مستقیم</option>
+                        <option value="check" <?= $edit_voucher['payment_method'] == 'check' ? 'selected' : '' ?>>چیک</option>
                     </select>
                 </div>
             </div>
@@ -368,16 +422,16 @@ h2{text-align:center; margin-bottom:20px; color:#333;}
             <h4 class="section-title">بانک</h4>
             <div class="form-row">
                 <div class="form-group">
-                    <label>نام بانک</label>
-                    <input type="text" name="bank_name" value="<?= htmlspecialchars($edit_bank['bank_name'] ?? '') ?>">
-                </div>
-                <div class="form-group">
                     <label>شماره حساب</label>
                     <input type="text" name="bank_account" value="<?= htmlspecialchars($edit_bank['bank_account'] ?? '') ?>">
                 </div>
                 <div class="form-group">
                     <label>انوایس</label>
                     <input type="text" name="invoice_id" value="<?= htmlspecialchars($edit_bank['invoice_id'] ?? '') ?>">
+                </div>
+                <div class="form-group">
+                    <label>نام بانک</label>
+                    <input type="text" name="bank_name" value="<?= htmlspecialchars($edit_bank['bank_name'] ?? '') ?>">
                 </div>
                 <div class="form-group">
                     <label>آدرس</label>
@@ -400,7 +454,7 @@ h2{text-align:center; margin-bottom:20px; color:#333;}
 <div class="voucher-card">
     <div class="voucher-header" onclick="toggleCard(this)">
         <div>شماره سند: <?= htmlspecialchars($voucher['voucher_number']) ?></div>
-        <div>نوعیت مصرف: <?= htmlspecialchars($voucher['expense_type']) ?></div>
+        <div>نوعیت مصرف: <?= htmlspecialchars($voucher['expense_type_desc']) ?></div>
         <div>کال: <?= htmlspecialchars($voucher['year']) ?></div>
         <div>نېټه: <?= htmlspecialchars($voucher['voucher_date']) ?></div>
     </div>
@@ -415,9 +469,18 @@ h2{text-align:center; margin-bottom:20px; color:#333;}
         <div class="section-title">جزئیات سند</div>
         <table>
             <tr>
-                <th>مجموعه ډبیټ</th><th>مجموعه کریډیټ</th><th>د تادیی وړ مبلغ</th><th>طریقه تادیه</th>
+                <th>کد نوعیت</th><th>توضیح نوعیت</th><th>شماره سیستم</th><th>نېټه سیستم</th><th>شماره سګټاس</th><th>شماره اسکن</th><th>اسعار</th><th>واحد پول</th><th>اداری کوډ</th><th>مجموعه ډبیټ</th><th>مجموعه کریډیټ</th><th>د تادیی وړ مبلغ</th><th>طریقه تادیه</th>
             </tr>
             <tr>
+                <td><?= htmlspecialchars($voucher['expense_type_code']) ?></td>
+                <td><?= htmlspecialchars($voucher['expense_type_desc']) ?></td>
+                <td><?= htmlspecialchars($voucher['system_number']) ?></td>
+                <td><?= htmlspecialchars($voucher['system_date']) ?></td>
+                <td><?= htmlspecialchars($voucher['sgtas_number']) ?></td>
+                <td><?= htmlspecialchars($voucher['scan_number']) ?></td>
+                <td><?= htmlspecialchars($voucher['asaar']) ?></td>
+                <td><?= htmlspecialchars($voucher['currency']) ?></td>
+                <td><?= htmlspecialchars($voucher['admin_code']) ?></td>
                 <td><?= htmlspecialchars($voucher['total_debit']) ?></td>
                 <td><?= htmlspecialchars($voucher['total_credit']) ?></td>
                 <td><?= htmlspecialchars($voucher['payable_amount']) ?></td>
@@ -461,11 +524,11 @@ h2{text-align:center; margin-bottom:20px; color:#333;}
         <?php if(isset($banks[$vid])): ?>
         <div class="section-title">بانک</div>
         <table>
-            <tr><th>نام بانک</th><th>شماره حساب</th><th>انوایس</th><th>آدرس</th></tr>
+            <tr><th>شماره حساب</th><th>انوایس</th><th>نام بانک</th><th>آدرس</th></tr>
             <tr>
-                <td><?= htmlspecialchars($banks[$vid]['bank_name']) ?></td>
                 <td><?= htmlspecialchars($banks[$vid]['bank_account']) ?></td>
                 <td><?= htmlspecialchars($banks[$vid]['invoice_id']) ?></td>
+                <td><?= htmlspecialchars($banks[$vid]['bank_name']) ?></td>
                 <td><?= htmlspecialchars($banks[$vid]['bank_address']) ?></td>
             </tr>
         </table>
