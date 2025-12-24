@@ -373,6 +373,23 @@ button:hover{background:#0056b3;}
 .budget-warning{color:orange;}
 .budget-error{color:red;}
 .budget-exhausted{color:red; font-weight:bold;}
+.footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    padding: 10px;
+    border-top: 1px solid #000;
+    font-size: 12px;
+    color: #666;
+}
+.footer-left {
+    text-align: left;
+}
+.footer-right {
+    text-align: right;
+}
+
 @media print{button{display:none;} .debug-info{display:none;} .close-btn{display:none;}}
 </style>
 <script>
@@ -837,7 +854,29 @@ document.addEventListener('DOMContentLoaded', function() {
     <?= $debug_info ?>
 </div>
 <?php endif; ?>
+<!-- FOOTER -->
+<div class="footer">
+    <div class="footer-left">
 
+        <h3>جوړ وونکی </h3>
+        <h5>حواله جاتو مامور</h5><br>
+
+                <h3>تا ییدوونکی </h3>
+  <h5>مالی او حسابی ریس</h5><br>
+    </div>
+    <div class="footer-right">
+        
+        <h3>تصحیح کوونکی  </h3>
+        <h5>محاسبه او معاشاتو آمر</h5><br>
+
+                <h3>منظور کوونکی </h3>
+  <h5>دامارتی شرکتونو د لوی ریاست مالی صلاحیت دار</h5><br>
+    </div>
+ 
+    </div>
+</div>
+
+</div>
 </div>
 
 <?php $conn->close(); ?>
