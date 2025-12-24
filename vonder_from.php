@@ -685,8 +685,8 @@ document.addEventListener('DOMContentLoaded', function() {
 <td colspan="4">معلومات سیسټم</td>
 </tr>
 <tr>
-
-<!-- <td class="right">کد نوعیت مصرف</td><td colspan="6"><input name="expense_type_code" required></td> -->
+    
+<td class="right">کد نوعیت مصرف</td><td colspan="6"><input name="expense_type_code" ></td>
 </tr>
 <tr>
 <td class="right">سند شمېره</td><td colspan="2"><input name="voucher_number" required></td>
