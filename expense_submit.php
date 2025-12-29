@@ -28,7 +28,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $budget_errors = [];
         $code_amounts = [];
         $expense_type = $_POST['expense_type'] ?? '';
-        $sub_expense_type = $_POST['sub_expense_type'] ?? '';
         
         // Validate budget limits
         foreach ($_POST['details'] as $i => $detail) {
@@ -81,19 +80,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         /* ---------- expense_vouchers ---------- */
         $stmt = $conn->prepare("
             INSERT INTO expense_vouchers
-            (expense_type, voucher_number, voucher_date, year,
+            (expense_type_code, expense_type_desc, voucher_number, voucher_date, year,
              system_number, system_date, sgtas_number, scan_number,
-             asaar, total_debit, total_credit, payable_amount, payment_method)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+             asaar, currency, admin_code, total_debit, total_credit, payable_amount, payment_method)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
 
         $total_debit    = $_POST['total_debit'] ?? 0;
         $total_credit   = $_POST['total_credit'] ?? 0;
         $payable_amount = $_POST['payable_amount'] ?? 0;
+        $currency = 'AFN';
+        $admin_code = '194000';
+        
+        // Use expense_type as expense_type_code since we removed the separate field
+        $expense_type_code = $_POST['expense_type'] ?? '';
 
         $stmt->bind_param(
-            "sssssssssddds",
-            $expense_type,
+            "isssssssssssddds",
+            $expense_type_code,
+            $_POST['expense_type_desc'],
             $_POST['voucher_number'],
             $_POST['voucher_date'],
             $_POST['year'],
@@ -102,6 +107,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_POST['sgtas_number'],
             $_POST['scan_number'],
             $_POST['asaar'],
+            $currency,
+            $admin_code,
             $total_debit,
             $total_credit,
             $payable_amount,
@@ -179,7 +186,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         /* ---------- UPDATE BUDGET_DETAILS ---------- */
         $debug_output = "<br><strong>Debug Info:</strong><br>";
         $debug_output .= "Expense Type (bab): " . htmlspecialchars($expense_type) . "<br>";
-        $debug_output .= "Sub Expense Type: " . htmlspecialchars($sub_expense_type) . "<br>";
         
         $total_updated = 0;
         foreach ($code_amounts as $key => $data) {
@@ -339,7 +345,7 @@ if ($codeResult) {
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>سابقه ویندر فورم</title>
+<title>ویندر فورم</title>
 <style>
 body{font-family:'Segoe UI', Tahoma, Arial; background:#f2f5f7; padding:20px;}
 .page{width:90%; max-width:1200px; margin:auto; padding:20px; border:2px solid #000; border-radius:10px; background:#fff;}
@@ -370,9 +376,6 @@ button:hover{background:#0056b3;}
 .budget-warning{color:orange;}
 .budget-error{color:red;}
 .budget-exhausted{color:red; font-weight:bold;}
-@media print{button{display:none;} .debug-info{display:none;} .close-btn{display:none;}}
-
-/* Footer Styles */
 .footer {
     display: flex;
     justify-content: space-between;
@@ -389,6 +392,8 @@ button:hover{background:#0056b3;}
 .footer-right {
     text-align: right;
 }
+
+@media print{button{display:none;} .debug-info{display:none;} .close-btn{display:none;}}
 </style>
 <script>
 // Auto-hide messages after 3 seconds
@@ -426,7 +431,7 @@ function toggleSection(id){
 function addRow(){
     let t=document.querySelector("#voucherItems tbody");
     let r=t.insertRow(-1);
-    r.innerHTML=`<td><input name="details[]" style="width: 250px;"></td>
+    r.innerHTML=`<td><input name="details[]"></td>
                  <td>
                     <input name="general_code[]" list="codeList" oninput="showCodeBudgetInfo(this)">
                     <div class="code-suggestion"></div>
@@ -665,36 +670,29 @@ document.addEventListener('DOMContentLoaded', function() {
 مالی او اداری معینیت<br>مالی او حساسبی ریاست <br>
 د محاسبی او معاشاتو آمریت</td>
 </tr>
+</tr>
 </table>
 
 <!-- EXPENSE TYPE -->
 <table>
-<tr class="gray center">
-<td>نوعیت مصرف (باب)</td>
-<td>زیر نوع مصرف</td>
-</tr>
+<tr class="center gray"><td>نوعیت مصرف (باب)</td><td>توضیح نوعیت مصرف</td></tr>
 <tr class="center">
 <td>
 <select name="expense_type" class="scrollable" required>
 <option value="">-- د مصرف ډول انتخاب کړئ --</option>
 <?php echo $bab_options; ?>
 </select>
-<div class="bab-info">
-    <small>لیست باب‌ها از جدول budget_details</small>
-</div>
+
 </td>
 <td>
-<select name="sub_expense_type" class="scrollable">
-<option value="">-- زیر نوع انتخاب کنید --</option>
+<select name="expense_type_desc" required>
+<option value="">-- انتخاب کنید --</option>
 <option value="عملیات">عملیات</option>
 <option value="توسعه">توسعه</option>
 <option value="نگهداری">نگهداری</option>
 <option value="خرید">خرید</option>
 <option value="سایر">سایر</option>
 </select>
-<div class="bab-info">
-    <small>زیر نوع مصرف را انتخاب کنید</small>
-</div>
 </td>
 </tr>
 </table>
@@ -733,7 +731,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <tr class="center">
 <td><input name="asaar"></td>
 <td>افغانی</td>
-<td>۱۹۴۰۰۰</td>
+<td>194000</td>
 </tr>
 </table>
 
@@ -748,8 +746,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </thead>
 <tbody id="voucherItems">
 <tr>
-<td><input name="details[]" style="width: 5
-00px;" required></td>
+<td><input name="details[]" required></td>
 <td>
     <input name="general_code[]" list="codeList" required>
     <div class="code-suggestion"></div>
@@ -856,7 +853,6 @@ document.addEventListener('DOMContentLoaded', function() {
     <?= $debug_info ?>
 </div>
 <?php endif; ?>
-
 <!-- FOOTER -->
 <div class="footer">
     <div class="footer-left">
@@ -879,6 +875,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
+</div>
 </div>
 
 <?php $conn->close(); ?>
