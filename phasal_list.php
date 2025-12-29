@@ -18,118 +18,133 @@ $result = $conn->query($sql);
 <meta charset="UTF-8">
 <title>لیست بودجه‌ها</title>
 <style>
-body {
-    font-family: Tahoma, Arial; 
-    padding: 20px; 
-    background-color: #f0f2f5;
+body{
+    font-family: Tahoma, Arial;
+    background:#f3f5f9;
+    padding:20px;
 }
 
-h2 {
-    text-align: center; 
-    color: #333; 
-    margin-bottom: 20px;
+/* Title */
+h2{
+    text-align:center;
+    color:#1f2937;
+    margin-bottom:16px;
+    font-size:22px;
+    font-weight:600;
 }
 
 /* Search input */
-#searchInput {
-    width: 100%;
-    max-width: 400px;
-    padding: 8px 12px;
-    margin-bottom: 15px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    font-size: 14px;
+#searchInput{
+    width:100%;
+    max-width:420px;
+    padding:10px 16px;
+    margin-bottom:15px;
+    border:1px solid #d1d5db;
+    border-radius:30px;
+    font-size:14px;
+    outline:none;
+    transition:0.3s;
+}
+#searchInput:focus{
+    border-color:#2563eb;
+    box-shadow:0 0 0 3px rgba(37,99,235,.15);
 }
 
-/* Scrollable table wrapper */
-.table-wrapper {
-    max-height: 500px;
-    overflow-y: auto;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    background: #fff;
+/* Table container */
+.table-wrapper{
+    max-height:520px;
+    overflow-y:auto;
+    background:#fff;
+    border-radius:12px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.08);
 }
 
-/* Table styles */
-table {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 800px;
+/* Table */
+table{
+    width:100%;
+    border-collapse:collapse;
+    min-width:850px;
 }
 
-th, td {
-    padding: 12px 10px;
-    text-align: center;
-    border-bottom: 1px solid #e0e0e0;
+/* Header */
+th{
+    background:linear-gradient(135deg,#2563eb,#1d4ed8);
+    color:#fff;
+    padding:12px;
+    font-size:14px;
+    font-weight:600;
+    position:sticky;
+    top:0;
+    z-index:2;
 }
 
-th {
-    background-color: #007BFF;
-    color: #fff;
-    position: sticky;
-    top: 0;
-    z-index: 2;
+/* Cells */
+td{
+    padding:11px 10px;
+    font-size:13px;
+    color:#374151;
+    border-bottom:1px solid #e5e7eb;
+    text-align:center;
 }
 
-tr:nth-child(even) {
-    background-color: #f9f9f9;
+/* Rows */
+tr:nth-child(even){
+    background:#f9fafb;
+}
+tr:hover{
+    background:#eef2ff;
 }
 
-tr:hover {
-    background-color: #e8f0fe;
+/* Numbers */
+.number-cell{
+    direction:ltr;
+    text-align:center;
+    font-weight:500;
 }
 
-.number-cell {
-    text-align: left; 
-    direction: ltr;
+/* Columns */
+.col-general{ width:70px; }
+.col-sub{ width:70px; }
+.col-description{
+    width:320px;
+    text-align:right;
+    line-height:1.6;
 }
 
-/* Column widths */
-.col-general { width: 60px; }
-.col-sub { width: 60px; }
-.col-description { width: 300px; text-align: right; }
-
-/* Percentage colors */
-.percent-low { color: #28a745; font-weight: bold; }
-.percent-medium { color: #ffc107; font-weight: bold; }
-.percent-high { color: #dc3545; font-weight: bold; }
+/* Percent colors */
+.percent-low{ color:#16a34a; font-weight:700; }
+.percent-medium{ color:#d97706; font-weight:700; }
+.percent-high{ color:#dc2626; font-weight:700; }
 
 /* Buttons */
-a {
-    text-decoration: none;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 13px;
-    display: inline-block;
-    margin: 2px;
-    transition: 0.3s;
+a{
+    text-decoration:none;
+    padding:6px 14px;
+    border-radius:20px;
+    font-size:12px;
+    font-weight:500;
+    transition:0.3s;
 }
 
-.edit-btn {
-    background-color: #17a2b8;
-    color: #fff;
+.edit-btn{
+    background:#0ea5e9;
+    color:#fff;
 }
-
-.edit-btn:hover {
-    background-color: #138496;
-}
-
-.delete-btn {
-    background-color: #dc3545;
-    color: #fff;
-}
-
-.delete-btn:hover {
-    background-color: #b52a37;
-    color: #fff;
+.edit-btn:hover{
+    background:#0284c7;
 }
 
 /* Responsive */
 @media(max-width:768px){
-    th, td { font-size: 12px; padding: 8px; }
-    a { font-size: 11px; padding: 4px 8px; }
-    .col-description { width: 150px; }
+    th,td{
+        font-size:12px;
+        padding:8px;
+    }
+    .col-description{
+        width:180px;
+    }
 }
+
 </style>
 
 <script>
