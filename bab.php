@@ -3,23 +3,53 @@
 $conn = new mysqli("localhost", "root", "", "budget1");
 if ($conn->connect_error) die("اتصال به پایگاه داده ناموفق بود: ".$conn->connect_error);
 
-// درج رکورد جدید
-if (isset($_POST['action']) && $_POST['action'] === 'insert') {
-    $general_code = $_POST['general_code'];
-    $description  = $_POST['description'];
-    $date         = $_POST['date'];
-    $budget       = $_POST['budget'];
-    $expense      = isset($_POST['expense']) && $_POST['expense'] !== "" ? $_POST['expense'] : 0;
-    $percentage   = ($budget > 0) ? ($expense / $budget) * 100 : 0;
+session_start();
 
-    $stmt = $conn->prepare("INSERT INTO bab (general_code, description, date, budget, expense, percentage) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssddd", $general_code, $description, $date, $budget, $expense, $percentage);
+// -------------------------------
+// Convert Pashto/Dari/Persian digits to English
+function toEnglishNumber($str) {
+    $persian = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+    $arabic  = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+    $english = ['0','1','2','3','4','5','6','7','8','9'];
+    return str_replace($arabic, $english, str_replace($persian, $english, $str));
+}
+
+// Normalize date to YYYY-MM-DD
+function normalizeDate($date) {
+    $date = toEnglishNumber($date);
+    return date('Y-m-d', strtotime($date));
+}
+
+// -------------------------------
+// INSERT NEW RECORD
+if (isset($_POST['action']) && $_POST['action'] === 'insert') {
+    $general_code = toEnglishNumber($_POST['general_code']);
+    $description  = $_POST['description'];
+    $date         = normalizeDate($_POST['date']);
+    $budget       = floatval(toEnglishNumber($_POST['budget']));
+    $expense      = isset($_POST['expense']) && $_POST['expense'] !== ""
+                    ? floatval(toEnglishNumber($_POST['expense']))
+                    : 0;
+
+    $percentage = ($budget > 0) ? ($expense / $budget) * 100 : 0;
+    if ($percentage > 100) $percentage = 100;
+
+    $stmt = $conn->prepare("
+        INSERT INTO bab (general_code, description, date, budget, expense, percentage)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->bind_param("sssddd",
+        $general_code, $description, $date,
+        $budget, $expense, $percentage
+    );
+
     echo $stmt->execute() ? "success" : "خطا: ".$conn->error;
     $stmt->close();
     exit;
 }
 
-// واکشی رکوردها
+// -------------------------------
+// FETCH RECORDS
 if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     $result = $conn->query("SELECT * FROM bab ORDER BY date DESC");
     if ($result->num_rows > 0) {
@@ -28,8 +58,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
                     <td>".htmlspecialchars($row['general_code'])."</td>
                     <td>".htmlspecialchars($row['description'])."</td>
                     <td>".$row['date']."</td>
-                    <td>".number_format($row['budget'],2)."</td>
-                    <td>".number_format($row['expense'],2)."</td>
+                    <td>".number_format($row['budget'],2,'.',',')."</td>
+                    <td>".number_format($row['expense'],2,'.',',')."</td>
                     <td>".number_format($row['percentage'],2)."%</td>
                     <td><button class='editBtn' data-id='".$row['id']."'>ویرایش</button></td>
                   </tr>";
@@ -40,18 +70,31 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     exit;
 }
 
-// بروزرسانی رکورد
+// -------------------------------
+// UPDATE RECORD
 if (isset($_POST['action']) && $_POST['action'] === 'update') {
-    $id           = $_POST['id'];
-    $general_code = $_POST['general_code'];
+    $id           = intval($_POST['id']);
+    $general_code = toEnglishNumber($_POST['general_code']);
     $description  = $_POST['description'];
-    $date         = $_POST['date'];
-    $budget       = $_POST['budget'];
-    $expense      = isset($_POST['expense']) && $_POST['expense'] !== "" ? $_POST['expense'] : 0;
-    $percentage   = ($budget > 0) ? ($expense / $budget) * 100 : 0;
+    $date         = normalizeDate($_POST['date']);
+    $budget       = floatval(toEnglishNumber($_POST['budget']));
+    $expense      = isset($_POST['expense']) && $_POST['expense'] !== ""
+                    ? floatval(toEnglishNumber($_POST['expense']))
+                    : 0;
 
-    $stmt = $conn->prepare("UPDATE bab SET general_code=?, description=?, date=?, budget=?, expense=?, percentage=? WHERE id=?");
-    $stmt->bind_param("sssdddi", $general_code, $description, $date, $budget, $expense, $percentage, $id);
+    $percentage = ($budget > 0) ? ($expense / $budget) * 100 : 0;
+    if ($percentage > 100) $percentage = 100;
+
+    $stmt = $conn->prepare("
+        UPDATE bab
+        SET general_code=?, description=?, date=?, budget=?, expense=?, percentage=?
+        WHERE id=?
+    ");
+    $stmt->bind_param("sssdddi",
+        $general_code, $description, $date,
+        $budget, $expense, $percentage, $id
+    );
+
     echo $stmt->execute() ? "success" : "خطا: ".$conn->error;
     $stmt->close();
     exit;
@@ -88,15 +131,15 @@ tr:nth-child(even) { background:#f2f2f2; }
 <div class="message" id="message"></div>
 <form id="budgetForm">
     <label>کد عمومی</label>
-    <input type="text" name="general_code" required>
+    <input type="text" name="general_code" class="convertNumber" required>
     <label>توضیحات</label>
     <input type="text" name="description" required>
     <label>تاریخ</label>
-    <input type="date" name="date" required>
+    <input type="date" name="date" class="convertNumber" required>
     <label>مقدار بودجه</label>
-    <input type="number" name="budget" step="0.01" required>
+    <input type="number" name="budget" class="convertNumber" step="0.01" required>
     <label>مقدار هزینه (اختیاری)</label>
-    <input type="number" name="expense" step="0.01">
+    <input type="number" name="expense" class="convertNumber" step="0.01">
     <button type="submit">ثبت</button>
 </form>
 
@@ -125,22 +168,40 @@ tr:nth-child(even) { background:#f2f2f2; }
         <form id="editForm">
             <input type="hidden" name="id" id="edit_id">
             <label>کد عمومی</label>
-            <input type="text" name="general_code" id="edit_general_code" required>
+            <input type="text" name="general_code" id="edit_general_code" class="convertNumber" required>
             <label>توضیحات</label>
             <input type="text" name="description" id="edit_description" required>
             <label>تاریخ</label>
-            <input type="date" name="date" id="edit_date" required>
+            <input type="date" name="date" id="edit_date" class="convertNumber" required>
             <label>مقدار بودجه</label>
-            <input type="number" name="budget" id="edit_budget" step="0.01" required>
+            <input type="number" name="budget" id="edit_budget" class="convertNumber" step="0.01" required>
             <label>مقدار هزینه (اختیاری)</label>
-            <input type="number" name="expense" step="0.01" id="edit_expense">
+            <input type="number" name="expense" step="0.01" id="edit_expense" class="convertNumber">
             <button type="submit">بروزرسانی</button>
         </form>
     </div>
 </div>
 
 <script>
-function loadTable(){ $("#budgetTable").load("<?php echo $_SERVER['PHP_SELF']; ?>?action=fetch"); }
+// Function to convert Pashto/Dari/Persian digits to English
+function convertToEnglish(str){
+    const persian = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+    const arabic  = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+    for(let i=0;i<10;i++){
+        str = str.replace(new RegExp(persian[i],'g'), i);
+        str = str.replace(new RegExp(arabic[i],'g'), i);
+    }
+    return str;
+}
+
+// Auto-convert input values on typing
+$(document).on('input', '.convertNumber', function(){
+    this.value = convertToEnglish(this.value);
+});
+
+function loadTable(){ 
+    $("#budgetTable").load("<?php echo $_SERVER['PHP_SELF']; ?>?action=fetch"); 
+}
 
 $(document).ready(function(){
     loadTable();
