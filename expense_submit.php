@@ -29,47 +29,107 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $code_amounts = [];
         $expense_type = $_POST['expense_type'] ?? '';
         
-        // Validate budget limits
+        // Validate budget limits for each row
         foreach ($_POST['details'] as $i => $detail) {
             if (trim($detail) === '') continue;
 
-            $debit  = $_POST['debit'][$i] ?? 0;
-            $credit = $_POST['credit'][$i] ?? 0;
             $general_code = $_POST['general_code'][$i] ?? '';
+            $sub_codes_string = $_POST['sub_code'][$i] ?? '';
+            $debits_string = $_POST['debit_per_sub_code'][$i] ?? '';
+            $credits_string = $_POST['credit_per_sub_code'][$i] ?? '';
             
-            if ($general_code && $debit > 0) {
-                // CORRECTED: Use general_code and sub_code columns
-                $check_stmt = $conn->prepare("
-                    SELECT budget, actual 
-                    FROM budget_details 
-                    WHERE general_code = ? AND sub_code = ?
-                ");
-                $check_stmt->bind_param("ss", $general_code, $expense_type);
-                $check_stmt->execute();
-                $check_result = $check_stmt->get_result();
+            if ($general_code && ($debits_string || $credits_string)) {
+                // Split multiple sub-codes by newline or comma
+                $sub_codes_array = preg_split('/[\n,]+/', $sub_codes_string);
+                $sub_codes_array = array_map('trim', $sub_codes_array);
+                $sub_codes_array = array_filter($sub_codes_array, function($val) {
+                    return $val !== '';
+                });
                 
-                if ($check_result->num_rows > 0) {
-                    $row = $check_result->fetch_assoc();
-                    $remaining_budget = $row['budget'];
-                    
-                    if ($debit > $remaining_budget) {
-                        $budget_errors[] = "مبلغ مصرف ($debit) برای کوډ $general_code از بودجه باقیمانده ($remaining_budget) بیشتر است!";
-                    } else {
-                        // Use a composite key to track amounts per general_code and expense_type
-                        $key = $general_code . '_' . $expense_type;
-                        if (!isset($code_amounts[$key])) {
-                            $code_amounts[$key] = [
-                                'general_code' => $general_code,
-                                'expense_type' => $expense_type,
-                                'amount' => 0
-                            ];
-                        }
-                        $code_amounts[$key]['amount'] += $debit;
-                    }
-                } else {
-                    $budget_errors[] = "کوډ $general_code برای باب $expense_type در سیستم بودجه موجود نیست!";
+                if (empty($sub_codes_array)) {
+                    $budget_errors[] = "ردیف " . ($i+1) . ": لطفاً حداقل یک فرعی کوډ وارد کنید!";
+                    continue;
                 }
-                $check_stmt->close();
+                
+                // Split debit amounts by newline or comma
+                $debits_array = [];
+                if (!empty(trim($debits_string))) {
+                    $debits_array = preg_split('/[\n,]+/', $debits_string);
+                    $debits_array = array_map(function($val) {
+                        $trimmed = trim($val);
+                        return is_numeric($trimmed) ? floatval($trimmed) : 0;
+                    }, $debits_array);
+                    $debits_array = array_filter($debits_array, function($val) {
+                        return $val !== '';
+                    });
+                }
+                
+                // Split credit amounts by newline or comma
+                $credits_array = [];
+                if (!empty(trim($credits_string))) {
+                    $credits_array = preg_split('/[\n,]+/', $credits_string);
+                    $credits_array = array_map(function($val) {
+                        $trimmed = trim($val);
+                        return is_numeric($trimmed) ? floatval($trimmed) : 0;
+                    }, $credits_array);
+                    $credits_array = array_filter($credits_array, function($val) {
+                        return $val !== '';
+                    });
+                }
+                
+                // Check if number of amounts matches number of sub-codes
+                if (!empty($debits_array) && count($debits_array) != count($sub_codes_array)) {
+                    $budget_errors[] = "ردیف " . ($i+1) . ": تعداد مقادیر ډبیټ (" . count($debits_array) . ") با تعداد فرعی کوډها (" . count($sub_codes_array) . ") مطابقت ندارد!";
+                    continue;
+                }
+                
+                if (!empty($credits_array) && count($credits_array) != count($sub_codes_array)) {
+                    $budget_errors[] = "ردیف " . ($i+1) . ": تعداد مقادیر کریډیټ (" . count($credits_array) . ") با تعداد فرعی کوډها (" . count($sub_codes_array) . ") مطابقت ندارد!";
+                    continue;
+                }
+                
+                // Check budget for each sub-code
+                foreach ($sub_codes_array as $index => $sub_code) {
+                    $debit = isset($debits_array[$index]) ? $debits_array[$index] : 0;
+                    $credit = isset($credits_array[$index]) ? $credits_array[$index] : 0;
+                    
+                    // Check budget only for debit entries
+                    if ($debit > 0) {
+                        $check_stmt = $conn->prepare("
+                            SELECT budget, actual 
+                            FROM budget_details 
+                            WHERE general_code = ? AND sub_code = ?
+                        ");
+                        $check_stmt->bind_param("ss", $general_code, $sub_code);
+                        $check_stmt->execute();
+                        $check_result = $check_stmt->get_result();
+                        
+                        if ($check_result->num_rows > 0) {
+                            $row = $check_result->fetch_assoc();
+                            $remaining_budget = $row['budget'];
+                            
+                            if ($debit > $remaining_budget) {
+                                $budget_errors[] = "ردیف " . ($i+1) . " (فرعی کوډ $sub_code): مبلغ مصرف ($debit) از بودجه باقیمانده ($remaining_budget) بیشتر است!";
+                            } else {
+                                // Track amount for each (general_code, sub_code) combination
+                                $key = $general_code . '_' . $sub_code;
+                                if (!isset($code_amounts[$key])) {
+                                    $code_amounts[$key] = [
+                                        'general_code' => $general_code,
+                                        'sub_code' => $sub_code,
+                                        'debit' => 0,
+                                        'credit' => 0
+                                    ];
+                                }
+                                $code_amounts[$key]['debit'] += $debit;
+                                $code_amounts[$key]['credit'] += $credit;
+                            }
+                        } else {
+                            $budget_errors[] = "ردیف " . ($i+1) . ": کوډ $general_code با فرعی کوډ $sub_code در سیستم بودجه موجود نیست!";
+                        }
+                        $check_stmt->close();
+                    }
+                }
             }
         }
         
@@ -92,13 +152,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $currency = 'AFN';
         $admin_code = '194000';
         
-        // Use expense_type as expense_type_code since we removed the separate field
         $expense_type_code = $_POST['expense_type'] ?? '';
+        $expense_type_desc = $_POST['expense_type'] ?? ''; // Using same value for desc
 
         $stmt->bind_param(
             "isssssssssssddds",
             $expense_type_code,
-            $_POST['expense_type_desc'],
+            $expense_type_desc,
             $_POST['voucher_number'],
             $_POST['voucher_date'],
             $_POST['year'],
@@ -121,8 +181,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         /* ---------- expense_voucher_items ---------- */
         $stmt = $conn->prepare("
             INSERT INTO expense_voucher_items
-            (voucher_id, details, general_code, sub_code, debit, credit)
-            VALUES (?,?,?,?,?,?)
+            (voucher_id, details, general_code, sub_code, debit, credit, debit_per_sub_code, credit_per_sub_code)
+            VALUES (?,?,?,?,?,?,?,?)
         ");
         
         foreach ($_POST['details'] as $i => $detail) {
@@ -132,15 +192,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $credit = $_POST['credit'][$i] ?? 0;
             $general_code = $_POST['general_code'][$i];
             $sub_code = $_POST['sub_code'][$i];
+            $debit_per_sub_code = $_POST['debit_per_sub_code'][$i] ?? '';
+            $credit_per_sub_code = $_POST['credit_per_sub_code'][$i] ?? '';
 
             $stmt->bind_param(
-                "isssdd",
+                "isssddss",
                 $voucher_id,
                 $detail,
                 $general_code,
                 $sub_code,
                 $debit,
-                $credit
+                $credit,
+                $debit_per_sub_code,
+                $credit_per_sub_code
             );
             $stmt->execute();
         }
@@ -190,18 +254,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $total_updated = 0;
         foreach ($code_amounts as $key => $data) {
             $general_code = $data['general_code'];
-            $expense_type = $data['expense_type'];
-            $amount = $data['amount'];
+            $sub_code = $data['sub_code'];
+            $debit = $data['debit'];
             
-            if ($amount > 0) {
-                // CORRECTED: Use general_code and sub_code columns
+            if ($debit > 0) {
                 $check_stmt = $conn->prepare("
                     SELECT budget, actual 
                     FROM budget_details 
                     WHERE general_code = ? AND sub_code = ? 
                     FOR UPDATE
                 ");
-                $check_stmt->bind_param("ss", $general_code, $expense_type);
+                $check_stmt->bind_param("ss", $general_code, $sub_code);
                 $check_stmt->execute();
                 $check_result = $check_stmt->get_result();
                 
@@ -210,9 +273,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $current_budget = $row['budget'];
                     $current_actual = $row['actual'];
                     
-                    $new_budget = $current_budget - $amount;
-                    $new_actual = $current_actual + $amount;
-                    $original_budget = $current_budget + $current_actual; // This gives the original total
+                    $new_budget = $current_budget - $debit;
+                    $new_actual = $current_actual + $debit;
+                    $original_budget = $current_budget + $current_actual;
                     
                     if ($original_budget > 0) {
                         $new_percent = min(100, ($new_actual / $original_budget) * 100);
@@ -221,7 +284,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $new_percent = 0;
                     }
                     
-                    // CORRECTED: Update query with proper column names
                     $update_stmt = $conn->prepare("
                         UPDATE budget_details 
                         SET budget = ?, actual = ?, percent = ?
@@ -233,21 +295,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $new_actual, 
                         $new_percent, 
                         $general_code, 
-                        $expense_type
+                        $sub_code
                     );
                     
                     if ($update_stmt->execute()) {
                         $total_updated++;
-                        $debug_output .= "Updated: $general_code (Type: $expense_type) - ";
+                        $debug_output .= "Updated: $general_code (Sub: $sub_code) - ";
                         $debug_output .= "Old Budget: $current_budget, New Budget: $new_budget, ";
-                        $debug_output .= "Amount Used: $amount<br>";
+                        $debug_output .= "Amount Used: $debit<br>";
                     } else {
-                        $debug_output .= "Failed to update: $general_code (Type: $expense_type) - ";
+                        $debug_output .= "Failed to update: $general_code (Sub: $sub_code) - ";
                         $debug_output .= "Error: " . $update_stmt->error . "<br>";
                     }
                     $update_stmt->close();
                 } else {
-                    $debug_output .= "Not found in budget_details: $general_code (Type: $expense_type)<br>";
+                    $debug_output .= "Not found in budget_details: $general_code (Sub: $sub_code)<br>";
                 }
                 $check_stmt->close();
             }
@@ -260,7 +322,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['success'] .= "<br>✅ بودیجې تازه شوې ($total_updated کوډونه)";
         }
         
-        // Store debug info in session for display
         if (!empty($debug_output)) {
             $_SESSION['debug_info'] = $debug_output;
         }
@@ -276,32 +337,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-/* ================= FETCH BAB FROM DATABASE ================= */
-// SIMPLE QUERY: Get all distinct sub_code values from budget_details
+/* ================= FETCH DATA FROM DATABASE ================= */
 $bab_query = "SELECT DISTINCT sub_code FROM budget_details ORDER BY sub_code ASC";
 $babResult = $conn->query($bab_query);
 
-// Debug: Check query result
 $bab_options = '';
 $debug_info = '';
 
 if (!$babResult) {
-    // Query failed
     $debug_info = "Query error: " . $conn->error;
     $bab_options = '<option value="">خطا در دریافت داده ها</option>';
 } elseif ($babResult->num_rows > 0) {
-    // Query successful, we have data
     while($row = $babResult->fetch_assoc()) {
         $bab_value = htmlspecialchars($row['sub_code']);
         $bab_options .= '<option value="' . $bab_value . '">' . $bab_value . '</option>';
     }
 } else {
-    // No data found
     $bab_options = '<option value="">-- هیچ داده‌ای یافت نشد --</option>';
-    $debug_info = "هیچ داده‌ای در جدول budget_details یافت نشد.";
 }
 
-// Also fetch codes for suggestions
+// Fetch all sub-codes for datalist
+$sub_code_query = "SELECT DISTINCT sub_code FROM budget_details ORDER BY sub_code ASC";
+$sub_code_result = $conn->query($sub_code_query);
+$all_sub_codes = [];
+if ($sub_code_result) {
+    while($row = $sub_code_result->fetch_assoc()) {
+        $all_sub_codes[] = $row['sub_code'];
+    }
+}
+
+// Fetch codes for suggestions
 $codeResult = $conn->query("
     SELECT general_code, sub_code, budget as remaining_budget, actual as spent,
            (budget + actual) as original_budget,
@@ -314,14 +379,13 @@ $codeResult = $conn->query("
 ");
 
 $all_codes = [];
-$all_general_codes = []; // For datalist
+$all_general_codes = [];
 
 if ($codeResult) {
     while($row = $codeResult->fetch_assoc()){
         $general_code = $row['general_code'];
         $sub_code = $row['sub_code'];
         
-        // Create a unique composite key for each general_code and sub_code combination
         $composite_key = $general_code . '_' . $sub_code;
         
         $all_codes[$composite_key] = [
@@ -330,11 +394,9 @@ if ($codeResult) {
             'remaining_budget' => $row['remaining_budget'],
             'spent' => $row['spent'],
             'original_budget' => $row['original_budget'],
-            'current_percent' => $row['current_percent'],
-            'bab' => $sub_code
+            'current_percent' => $row['current_percent']
         ];
         
-        // Add to general codes list for datalist
         if (!in_array($general_code, $all_general_codes)) {
             $all_general_codes[] = $general_code;
         }
@@ -347,6 +409,7 @@ if ($codeResult) {
 <meta charset="UTF-8">
 <title>ویندر فورم</title>
 <style>
+/* Your existing CSS remains the same */
 body{font-family:'Segoe UI', Tahoma, Arial; background:#f2f5f7; padding:20px;}
 .page{width:90%; max-width:1200px; margin:auto; padding:20px; border:2px solid #000; border-radius:10px; background:#fff;}
 table{width:100%; border-collapse:collapse; font-size:14px; margin-bottom:10px;}
@@ -355,7 +418,7 @@ td, th{border:1px solid #000; padding:6px; vertical-align:middle;}
 .right{text-align:right;}
 .left{text-align:left;}
 .gray{background:#e6e6e6; font-weight:bold; color:#333;}
-input[type=text], input[type=number], input[type=date], select{
+input[type=text], input[type=number], input[type=date], select, textarea{
     width:100%; padding:6px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;
 }
 select.scrollable {max-height:150px; overflow-y:auto; display:block;}
@@ -370,8 +433,9 @@ button:hover{background:#0056b3;}
 .close-btn{position:absolute; top:5px; left:10px; background:#ccc; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:12px; line-height:1;}
 .close-btn:hover{background:#999; color:white;}
 .message-hiding{opacity:0.7;}
-.bab-info{font-size:11px; color:#666; margin-top:5px;}
 .code-suggestion{font-size:11px; color:#666; margin-top:2px; padding:3px; background:#f8f9fa; border-radius:3px;}
+.sub-code-info{font-size:10px; color:#555; background:#f0f0f0; padding:2px 5px; border-radius:3px; margin-top:2px;}
+.amount-info{font-size:10px; color:#333; background:#e6f7ff; padding:2px 5px; border-radius:3px; margin-top:2px;}
 .budget-ok{color:green;}
 .budget-warning{color:orange;}
 .budget-error{color:red;}
@@ -391,6 +455,28 @@ button:hover{background:#0056b3;}
 }
 .footer-right {
     text-align: right;
+}
+.sub-code-hint {
+    font-size: 10px;
+    color: #666;
+    margin-top: 2px;
+    font-style: italic;
+}
+.amount-row {
+    background: #f9f9f9;
+    border-top: 1px dashed #ddd;
+}
+.amount-inputs {
+    display: flex;
+    gap: 5px;
+    margin-top: 5px;
+}
+.amount-inputs input {
+    flex: 1;
+}
+.amount-label {
+    font-size: 10px;
+    color: #666;
 }
 
 @media print{button{display:none;} .debug-info{display:none;} .close-btn{display:none;}}
@@ -436,100 +522,241 @@ function addRow(){
                     <input name="general_code[]" list="codeList" oninput="showCodeBudgetInfo(this)">
                     <div class="code-suggestion"></div>
                  </td>
-                 <td><input name="sub_code[]"></td>
-                 <td><input type="number" step="0.01" name="debit[]" class="debit-input" oninput="checkBudgetLimit(this)"></td>
-                 <td><input type="number" step="0.01" name="credit[]" class="credit-input"></td>`;
+                 <td>
+                    <textarea name="sub_code[]" rows="2" placeholder="هر فرعی کوډ در یک خط (یا با کاما جدا کنید)" oninput="updateSubCodeInfo(this)"></textarea>
+                    <div class="sub-code-info"></div>
+                    <div class="sub-code-hint">هر فرعی کوډ در یک خط جداگانه وارد کنید یا با کاما جدا کنید</div>
+                 </td>
+                 <td>
+                    <input type="number" step="0.01" name="debit[]" class="debit-input" readonly>
+                    <div class="amount-inputs">
+                        <div>
+                            <div class="amount-label">ډبیټ برای هر فرعی کوډ:</div>
+                            <textarea name="debit_per_sub_code[]" rows="2" placeholder="مقادیر ډبیټ (یک مقدار برای هر فرعی کوډ)" oninput="validateSubCodeAmounts(this)"></textarea>
+                        </div>
+                    </div>
+                    <div class="amount-info"></div>
+                 </td>
+                 <td>
+                    <input type="number" step="0.01" name="credit[]" class="credit-input" readonly>
+                    <div class="amount-inputs">
+                        <div>
+                            <div class="amount-label">کریډیټ برای هر فرعی کوډ:</div>
+                            <textarea name="credit_per_sub_code[]" rows="2" placeholder="مقادیر کریډیټ (یک مقدار برای هر فرعی کوډ)" oninput="validateSubCodeAmounts(this)"></textarea>
+                        </div>
+                    </div>
+                 </td>`;
     
+    // Add event listeners for the new row
+    const rowIndex = t.rows.length - 1;
     r.querySelector('.debit-input').addEventListener('input', calculateTotals);
     r.querySelector('.credit-input').addEventListener('input', calculateTotals);
+    
+    // Add event listener for general code change
+    r.querySelector('input[name="general_code[]"]').addEventListener('input', function() {
+        showCodeBudgetInfo(this);
+        validateSubCodeAmountsForRow(this.closest('tr'));
+    });
+    
+    // Add event listener for sub code change
+    r.querySelector('textarea[name="sub_code[]"]').addEventListener('input', function() {
+        updateSubCodeInfo(this);
+        showCodeBudgetInfo(this.closest('tr').querySelector('input[name="general_code[]"]'));
+        validateSubCodeAmountsForRow(this.closest('tr'));
+    });
+}
+
+function updateSubCodeInfo(textarea) {
+    const infoDiv = textarea.nextElementSibling;
+    const subCodesString = textarea.value.trim();
+    
+    if (subCodesString) {
+        // Split by new line or comma
+        const subCodes = subCodesString.split(/[\n,]+/).map(code => code.trim()).filter(code => code);
+        if (subCodes.length > 0) {
+            infoDiv.innerHTML = `<span>تعداد فرعی کوډها: ${subCodes.length}</span>`;
+            
+            // Update amount fields to match number of sub-codes
+            const row = textarea.closest('tr');
+            const debitPerSubCode = row.querySelector('textarea[name="debit_per_sub_code[]"]');
+            const creditPerSubCode = row.querySelector('textarea[name="credit_per_sub_code[]"]');
+            
+            if (debitPerSubCode) {
+                debitPerSubCode.placeholder = `مقادیر ډبیټ (${subCodes.length} مقدار با کاما یا خط جدید جدا کنید)`;
+            }
+            if (creditPerSubCode) {
+                creditPerSubCode.placeholder = `مقادیر کریډیټ (${subCodes.length} مقدار با کاما یا خط جدید جدا کنید)`;
+            }
+        } else {
+            infoDiv.innerHTML = '';
+        }
+    } else {
+        infoDiv.innerHTML = '';
+    }
 }
 
 function showCodeBudgetInfo(input) {
     const suggestionDiv = input.nextElementSibling;
     const code = input.value.trim();
-    const expenseType = document.querySelector('select[name="expense_type"]').value;
+    const row = input.closest('tr');
+    const subCodeTextarea = row.querySelector('textarea[name="sub_code[]"]');
+    const subCodesString = subCodeTextarea ? subCodeTextarea.value.trim() : '';
     
-    if (code.length > 0 && expenseType) {
+    if (code.length > 0) {
         const codeData = <?php echo json_encode($all_codes); ?>;
+        const subCodes = subCodesString.split(/[\n,]+/).map(code => code.trim()).filter(code => code);
         
-        // Look for the code with the current expense type
-        const compositeKey = code + '_' + expenseType;
-        
-        if (codeData[compositeKey]) {
-            const data = codeData[compositeKey];
-            const remaining = data.remaining_budget;
-            const spent = data.spent;
-            const original = data.original_budget;
-            const currentPercent = data.current_percent || 0;
-            const bab = data.sub_code;
+        if (subCodes.length > 0) {
+            let html = '';
+            let totalRemaining = 0;
+            let allValid = true;
             
-            suggestionDiv.innerHTML = `
-                <div>
-                    <span class="budget-ok">بودجه اصلی: ${original.toLocaleString()}</span><br>
-                    <span>مصرف شده: ${spent.toLocaleString()}</span><br>
-                    <span>بودجه باقیمانده: ${remaining.toLocaleString()}</span><br>
-                    <span>درصد مصرف: ${currentPercent}%</span><br>
-                    <span>باب: ${bab}</span>
-                </div>
-            `;
-            
-            if (remaining <= 0) {
-                suggestionDiv.innerHTML += '<span class="budget-exhausted">(بودجه تمام شده!)</span>';
-            } else if (remaining < (original * 0.1)) {
-                suggestionDiv.innerHTML += '<span class="budget-warning">(بودجه در حال اتمام!)</span>';
-            }
-        } else {
-            // Check if the code exists for another bab
-            let codeExistsForOtherBab = false;
-            for (let key in codeData) {
-                if (codeData[key].general_code === code) {
-                    codeExistsForOtherBab = true;
-                    break;
+            subCodes.forEach((subCode, index) => {
+                const compositeKey = code + '_' + subCode;
+                if (codeData[compositeKey]) {
+                    const data = codeData[compositeKey];
+                    const remaining = data.remaining_budget;
+                    const spent = data.spent;
+                    const original = data.original_budget;
+                    const currentPercent = data.current_percent || 0;
+                    
+                    totalRemaining += remaining;
+                    
+                    html += `<div style="margin-bottom: 5px; padding: 3px; border-bottom: 1px solid #eee;">
+                        <strong>فرعی کوډ ${index + 1}: ${subCode}</strong><br>
+                        <span>بودجه اصلی: ${original.toLocaleString()}</span><br>
+                        <span>مصرف شده: ${spent.toLocaleString()}</span><br>
+                        <span class="${remaining > 0 ? 'budget-ok' : 'budget-error'}">بودجه باقیمانده: ${remaining.toLocaleString()}</span><br>
+                        <span>درصد مصرف: ${currentPercent}%</span>
+                    </div>`;
+                } else {
+                    allValid = false;
+                    html += `<div style="margin-bottom: 5px; padding: 3px; border-bottom: 1px solid #eee;">
+                        <strong>فرعی کوډ ${index + 1}: ${subCode}</strong><br>
+                        <span class="budget-error">این فرعی کوډ در سیستم بودجه موجود نیست!</span>
+                    </div>`;
                 }
+            });
+            
+            if (allValid && subCodes.length > 1) {
+                html += `<div style="margin-top: 5px; padding: 3px; background: #e6ffe6;">
+                    <strong>مجموع بودجه باقیمانده: ${totalRemaining.toLocaleString()}</strong>
+                </div>`;
             }
             
-            if (codeExistsForOtherBab) {
-                suggestionDiv.innerHTML = '<span class="budget-error">این کوډ برای باب انتخاب شده معتبر نیست!</span>';
-            } else {
-                suggestionDiv.innerHTML = '<span class="budget-error">این کوډ در سیستم بودجه موجود نیست!</span>';
-            }
+            suggestionDiv.innerHTML = html;
+        } else {
+            suggestionDiv.innerHTML = '<span style="color: #999;">لطفاً فرعی کوډها را وارد کنید</span>';
         }
-    } else if (code.length > 0) {
-        suggestionDiv.innerHTML = '<span style="color: #999;">ابتدا نوعیت مصرف را انتخاب کنید</span>';
     } else {
         suggestionDiv.innerHTML = "";
     }
 }
 
-function checkBudgetLimit(input) {
-    const row = input.closest('tr');
-    const codeInput = row.querySelector('input[name="general_code[]"]');
-    const expenseType = document.querySelector('select[name="expense_type"]').value;
-    const amount = parseFloat(input.value) || 0;
+function validateSubCodeAmounts(textarea) {
+    const row = textarea.closest('tr');
+    validateSubCodeAmountsForRow(row);
+}
+
+function validateSubCodeAmountsForRow(row) {
+    const subCodeTextarea = row.querySelector('textarea[name="sub_code[]"]');
+    const debitPerSubCode = row.querySelector('textarea[name="debit_per_sub_code[]"]');
+    const creditPerSubCode = row.querySelector('textarea[name="credit_per_sub_code[]"]');
+    const generalCodeInput = row.querySelector('input[name="general_code[]"]');
+    const amountInfoDiv = row.querySelector('.amount-info');
+    const debitInput = row.querySelector('input[name="debit[]"]');
+    const creditInput = row.querySelector('input[name="credit[]"]');
     
-    if (codeInput.value && expenseType) {
-        const codeData = <?php echo json_encode($all_codes); ?>;
-        const compositeKey = codeInput.value + '_' + expenseType;
-        const data = codeData[compositeKey];
+    const subCodesString = subCodeTextarea ? subCodeTextarea.value.trim() : '';
+    const subCodes = subCodesString.split(/[\n,]+/).map(code => code.trim()).filter(code => code);
+    
+    if (subCodes.length === 0) {
+        if (amountInfoDiv) amountInfoDiv.innerHTML = '';
+        if (debitInput) debitInput.value = '';
+        if (creditInput) creditInput.value = '';
+        return;
+    }
+    
+    const code = generalCodeInput ? generalCodeInput.value.trim() : '';
+    const codeData = <?php echo json_encode($all_codes); ?>;
+    
+    // Validate debit amounts
+    let debitTotal = 0;
+    let debitErrors = [];
+    let debitAmounts = [];
+    
+    if (debitPerSubCode && debitPerSubCode.value.trim()) {
+        debitAmounts = debitPerSubCode.value.split(/[\n,]+/).map(val => {
+            const trimmed = val.trim();
+            return trimmed === '' ? 0 : parseFloat(trimmed) || 0;
+        }).filter(val => val !== '');
         
-        if (data && data.sub_code === expenseType) {
-            const remaining = data.remaining_budget;
-            
-            if (amount > remaining) {
-                input.style.borderColor = '#dc3545';
-                input.style.backgroundColor = '#ffe6e6';
-                input.setCustomValidity(`مبلغ از بودجه باقیمانده (${remaining.toLocaleString()}) بیشتر است!`);
-            } else {
-                input.style.borderColor = '#28a745';
-                input.style.backgroundColor = '#e6ffe6';
-                input.setCustomValidity('');
-            }
+        if (debitAmounts.length !== subCodes.length) {
+            debitErrors.push(`تعداد مقادیر ډبیټ (${debitAmounts.length}) با تعداد فرعی کوډها (${subCodes.length}) مطابقت ندارد`);
         } else {
-            input.style.borderColor = '#dc3545';
-            input.style.backgroundColor = '#ffe6e6';
-            input.setCustomValidity('کوډ انتخاب شده برای این باب معتبر نیست!');
+            debitTotal = debitAmounts.reduce((sum, val) => sum + val, 0);
+            
+            // Check budget for each sub-code
+            debitAmounts.forEach((amount, index) => {
+                if (amount > 0 && code && subCodes[index]) {
+                    const compositeKey = code + '_' + subCodes[index];
+                    if (codeData[compositeKey]) {
+                        const remaining = codeData[compositeKey].remaining_budget;
+                        if (amount > remaining) {
+                            debitErrors.push(`فرعی کوډ ${subCodes[index]}: مبلغ ${amount.toLocaleString()} از بودجه باقیمانده (${remaining.toLocaleString()}) بیشتر است`);
+                        }
+                    } else if (code) {
+                        debitErrors.push(`فرعی کوډ ${subCodes[index]}: در سیستم بودجه موجود نیست`);
+                    }
+                }
+            });
         }
     }
+    
+    // Validate credit amounts
+    let creditTotal = 0;
+    let creditErrors = [];
+    let creditAmounts = [];
+    
+    if (creditPerSubCode && creditPerSubCode.value.trim()) {
+        creditAmounts = creditPerSubCode.value.split(/[\n,]+/).map(val => {
+            const trimmed = val.trim();
+            return trimmed === '' ? 0 : parseFloat(trimmed) || 0;
+        }).filter(val => val !== '');
+        
+        if (creditAmounts.length !== subCodes.length) {
+            creditErrors.push(`تعداد مقادیر کریډیټ (${creditAmounts.length}) با تعداد فرعی کوډها (${subCodes.length}) مطابقت ندارد`);
+        } else {
+            creditTotal = creditAmounts.reduce((sum, val) => sum + val, 0);
+        }
+    }
+    
+    // Update row totals
+    if (debitInput) debitInput.value = debitTotal.toFixed(2);
+    if (creditInput) creditInput.value = creditTotal.toFixed(2);
+    
+    // Update amount info display
+    if (amountInfoDiv) {
+        let infoHtml = '';
+        if (debitTotal > 0) {
+            infoHtml += `مجموع ډبیټ: ${debitTotal.toLocaleString()}`;
+        }
+        if (creditTotal > 0) {
+            if (infoHtml) infoHtml += '<br>';
+            infoHtml += `مجموع کریډیټ: ${creditTotal.toLocaleString()}`;
+        }
+        
+        // Show errors if any
+        const allErrors = [...debitErrors, ...creditErrors];
+        if (allErrors.length > 0) {
+            infoHtml += `<br><span style="color: #dc3545;">خطاها:<br>${allErrors.join('<br>')}</span>`;
+        }
+        
+        amountInfoDiv.innerHTML = infoHtml;
+    }
+    
+    // Update main totals
+    calculateTotals();
 }
 
 function calculateTotals() {
@@ -563,13 +790,16 @@ function validateForm() {
         return false;
     }
     
+    // Check each row
     document.querySelectorAll('input[name="general_code[]"]').forEach((codeInput, index) => {
         const detail = document.querySelectorAll('input[name="details[]"]')[index].value;
-        const debitInput = document.querySelectorAll('input[name="debit[]"]')[index];
-        const debit = parseFloat(debitInput.value) || 0;
+        const subCodeTextarea = document.querySelectorAll('textarea[name="sub_code[]"]')[index];
+        const subCodesString = subCodeTextarea ? subCodeTextarea.value.trim() : '';
+        const debitPerSubCode = document.querySelectorAll('textarea[name="debit_per_sub_code[]"]')[index];
+        const creditPerSubCode = document.querySelectorAll('textarea[name="credit_per_sub_code[]"]')[index];
         
-        if (detail.trim() && debit > 0) {
-            const code = codeInput.value;
+        if (detail.trim()) {
+            const code = codeInput.value.trim();
             
             if (!code) {
                 alert(`ردیف ${index + 1}: کوډ عمومی را وارد کنید!`);
@@ -577,38 +807,78 @@ function validateForm() {
                 return false;
             }
             
-            const compositeKey = code + '_' + expenseType;
-            
-            if (codeData[compositeKey]) {
-                if (codeData[compositeKey].sub_code !== expenseType) {
-                    alert(`ردیف ${index + 1}: کوډ "${code}" برای باب "${expenseType}" معتبر نیست!`);
-                    isValid = false;
-                    return false;
-                }
-                
-                const remaining = codeData[compositeKey].remaining_budget;
-                if (debit > remaining) {
-                    alert(`ردیف ${index + 1}: مبلغ مصرف (${debit.toLocaleString()}) از بودجه باقیمانده (${remaining.toLocaleString()}) بیشتر است!`);
-                    isValid = false;
-                    return false;
-                }
-            } else {
-                // Check if code exists for other bab
-                let codeExists = false;
-                for (let key in codeData) {
-                    if (codeData[key].general_code === code) {
-                        codeExists = true;
-                        break;
-                    }
-                }
-                
-                if (codeExists) {
-                    alert(`ردیف ${index + 1}: کوډ "${code}" برای باب "${expenseType}" معتبر نیست!`);
-                } else {
-                    alert(`ردیف ${index + 1}: کوډ "${code}" در سیستم بودجه موجود نیست!`);
-                }
+            if (!subCodesString) {
+                alert(`ردیف ${index + 1}: فرعی کوډها را وارد کنید!`);
                 isValid = false;
                 return false;
+            }
+            
+            const subCodes = subCodesString.split(/[\n,]+/).map(code => code.trim()).filter(code => code);
+            
+            if (subCodes.length === 0) {
+                alert(`ردیف ${index + 1}: حداقل یک فرعی کوډ معتبر وارد کنید!`);
+                isValid = false;
+                return false;
+            }
+            
+            // Check each sub-code
+            subCodes.forEach((subCode, subIndex) => {
+                const compositeKey = code + '_' + subCode;
+                if (!codeData[compositeKey]) {
+                    alert(`ردیف ${index + 1} (فرعی کوډ ${subCode}): کوډ "${code}" با فرعی کوډ "${subCode}" در سیستم بودجه موجود نیست!`);
+                    isValid = false;
+                }
+            });
+            
+            // Check debit amounts if entered
+            if (debitPerSubCode && debitPerSubCode.value.trim()) {
+                const debitAmounts = debitPerSubCode.value.split(/[\n,]+/).map(val => {
+                    const trimmed = val.trim();
+                    return trimmed === '' ? 0 : parseFloat(trimmed) || 0;
+                }).filter(val => val !== '');
+                
+                if (debitAmounts.length !== subCodes.length) {
+                    alert(`ردیف ${index + 1}: تعداد مقادیر ډبیټ (${debitAmounts.length}) با تعداد فرعی کوډها (${subCodes.length}) مطابقت ندارد!`);
+                    isValid = false;
+                } else {
+                    // Check budget for each debit amount
+                    debitAmounts.forEach((amount, amountIndex) => {
+                        if (amount > 0) {
+                            const subCode = subCodes[amountIndex];
+                            const compositeKey = code + '_' + subCode;
+                            if (codeData[compositeKey]) {
+                                const remaining = codeData[compositeKey].remaining_budget;
+                                if (amount > remaining) {
+                                    alert(`ردیف ${index + 1} (فرعی کوډ ${subCode}): مبلغ مصرف (${amount.toLocaleString()}) از بودجه باقیمانده (${remaining.toLocaleString()}) بیشتر است!`);
+                                    isValid = false;
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+            
+            // Check credit amounts if entered
+            if (creditPerSubCode && creditPerSubCode.value.trim()) {
+                const creditAmounts = creditPerSubCode.value.split(/[\n,]+/).map(val => {
+                    const trimmed = val.trim();
+                    return trimmed === '' ? 0 : parseFloat(trimmed) || 0;
+                }).filter(val => val !== '');
+                
+                if (creditAmounts.length !== subCodes.length) {
+                    alert(`ردیف ${index + 1}: تعداد مقادیر کریډیټ (${creditAmounts.length}) با تعداد فرعی کوډها (${subCodes.length}) مطابقت ندارد!`);
+                    isValid = false;
+                }
+            }
+            
+            // Check if at least one amount is entered
+            const debitInput = document.querySelectorAll('input[name="debit[]"]')[index];
+            const creditInput = document.querySelectorAll('input[name="credit[]"]')[index];
+            
+            if ((!debitInput || !debitInput.value || parseFloat(debitInput.value) === 0) && 
+                (!creditInput || !creditInput.value || parseFloat(creditInput.value) === 0)) {
+                alert(`ردیف ${index + 1}: حداقل یکی از مقادیر ډبیټ یا کریډیټ را وارد کنید!`);
+                isValid = false;
             }
         }
     });
@@ -629,32 +899,18 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    function attachEvents() {
-        document.querySelectorAll('input[name="debit[]"], input[name="credit[]"]').forEach(input => {
-            input.removeEventListener('input', calculateTotals);
-            input.addEventListener('input', calculateTotals);
-        });
-        
-        document.querySelectorAll('input[name="general_code[]"]').forEach(input => {
-            input.addEventListener('input', function() {
-                showCodeBudgetInfo(this);
-                const row = this.closest('tr');
-                const debitInput = row.querySelector('input[name="debit[]"]');
-                if (debitInput && debitInput.value) {
-                    checkBudgetLimit(debitInput);
-                }
-            });
-        });
-    }
-    
-    attachEvents();
-    calculateTotals();
-    
-    document.querySelectorAll('input[name="general_code[]"]').forEach(input => {
-        if (input.value) {
-            showCodeBudgetInfo(input);
+    // Initialize all rows
+    document.querySelectorAll('textarea[name="sub_code[]"]').forEach(textarea => {
+        updateSubCodeInfo(textarea);
+        const row = textarea.closest('tr');
+        const generalCodeInput = row.querySelector('input[name="general_code[]"]');
+        if (generalCodeInput && generalCodeInput.value) {
+            showCodeBudgetInfo(generalCodeInput);
         }
+        validateSubCodeAmountsForRow(row);
     });
+    
+    calculateTotals();
 });
 </script>
 </head>
@@ -667,32 +923,20 @@ document.addEventListener('DOMContentLoaded', function() {
 <table class="no-border">
 <tr>
 <td class="center"><strong>د افغانستان اسلامی امارت</strong><br>امارتی شرکتونو لوی ریاست<br>
-مالی او اداری معینیت<br>مالی او حساسبی ریاست <br>
+مالی او اداری معاونیت<br>مالی او حساسبی ریاست <br>
 د محاسبی او معاشاتو آمریت</td>
-</tr>
 </tr>
 </table>
 
 <!-- EXPENSE TYPE -->
 <table>
-<tr class="center gray"><td>نوعیت مصرف (باب)</td><td>توضیح نوعیت مصرف</td></tr>
-<tr class="center">
-<td>
-<select name="expense_type" class="scrollable" required>
-<option value="">-- د مصرف ډول انتخاب کړئ --</option>
-<?php echo $bab_options; ?>
-</select>
-
-</td>
-<td>
-<select name="expense_type_desc" required>
-<option value="">-- انتخاب کنید --</option>
-<option value="عملیات">عملیات</option>
-<option value="توسعه">توسعه</option>
-<option value="نگهداری">نگهداری</option>
-<option value="خرید">خرید</option>
-<option value="سایر">سایر</option>
-</select>
+<tr>
+<td class="right" style="width:150px;">نوعیت مصرف:</td>
+<td colspan="3">
+    <select name="expense_type" required>
+        <option value="">-- نوعیت مصرف انتخاب کړئ --</option>
+        <?= $bab_options ?>
+    </select>
 </td>
 </tr>
 </table>
@@ -738,7 +982,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <br>
 
 <!-- VOUCHER ITEMS -->
-<table>
+<table id="voucherItemsTable">
 <thead>
 <tr class="gray center">
 <th>تفصیلات</th><th>عمومي کوډ</th><th>فرعی کوډ</th><th>ډبیټ</th><th>کریډیټ</th>
@@ -749,20 +993,40 @@ document.addEventListener('DOMContentLoaded', function() {
 <td><input name="details[]" required></td>
 <td>
     <input name="general_code[]" list="codeList" required>
+    <datalist id="codeList">
+        <?php foreach($all_general_codes as $code): ?>
+            <option value="<?= htmlspecialchars($code) ?>">
+        <?php endforeach; ?>
+    </datalist>
     <div class="code-suggestion"></div>
 </td>
-<td><input name="sub_code[]"></td>
-<td><input type="number" step="0.01" name="debit[]" class="debit-input" required></td>
-<td><input type="number" step="0.01" name="credit[]" class="credit-input"></td>
+<td>
+    <textarea name="sub_code[]" rows="2" placeholder="هر فرعی کوډ در یک خط (یا با کاما جدا کنید)" required></textarea>
+    <div class="sub-code-info"></div>
+    <div class="sub-code-hint">هر فرعی کوډ در یک خط جداگانه وارد کنید یا با کاما جدا کنید</div>
+</td>
+<td>
+    <input type="number" step="0.01" name="debit[]" class="debit-input" readonly>
+    <div class="amount-inputs">
+        <div>
+            <div class="amount-label">ډبیټ برای هر فرعی کوډ:</div>
+            <textarea name="debit_per_sub_code[]" rows="2" placeholder="مقادیر ډبیټ (یک مقدار برای هر فرعی کوډ)"></textarea>
+        </div>
+    </div>
+    <div class="amount-info"></div>
+</td>
+<td>
+    <input type="number" step="0.01" name="credit[]" class="credit-input" readonly>
+    <div class="amount-inputs">
+        <div>
+            <div class="amount-label">کریډیټ برای هر فرعی کوډ:</div>
+            <textarea name="credit_per_sub_code[]" rows="2" placeholder="مقادیر کریډیټ (یک مقدار برای هر فرعی کوډ)"></textarea>
+        </div>
+    </div>
+</td>
 </tr>
 </tbody>
 </table>
-
-<datalist id="codeList">
-<?php foreach($all_general_codes as $code): ?>
-<option value="<?= htmlspecialchars($code) ?>">
-<?php endforeach; ?>
-</datalist>
 
 <button type="button" onclick="addRow()">➕ قطار زیات کړئ</button>
 
@@ -776,8 +1040,6 @@ document.addEventListener('DOMContentLoaded', function() {
 <td><input type="number" step="0.01" name="total_credit" readonly></td>
 </tr>
 </table>
-
-<br>
 
 <!-- PAYMENT -->
 <table>
@@ -841,7 +1103,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 <?php endif; ?>
 
-<?php if(isset($error)): ?>
+<?php if($error): ?>
 <div class="error-message">
     <?= $error ?>
 </div>
@@ -856,26 +1118,19 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- FOOTER -->
 <div class="footer">
     <div class="footer-left">
-
         <h3>جوړ وونکی </h3>
         <h5>حواله جاتو مامور</h5><br>
-
-                <h3>تا ییدوونکی </h3>
-  <h5>مالی او حسابی ریس</h5><br>
+        <h3>تا ییدوونکی </h3>
+        <h5>مالی او حسابی ریس</h5><br>
     </div>
     <div class="footer-right">
-        
         <h3>تصحیح کوونکی  </h3>
         <h5>محاسبه او معاشاتو آمر</h5><br>
-
-                <h3>منظور کوونکی </h3>
-  <h5>دامارتی شرکتونو د لوی ریاست مالی صلاحیت دار</h5><br>
-    </div>
- 
+        <h3>منظور کوونکی </h3>
+        <h5>دامارتی شرکتونو د لوی ریاست مالی صلاحیت دار</h5><br>
     </div>
 </div>
 
-</div>
 </div>
 
 <?php $conn->close(); ?>
